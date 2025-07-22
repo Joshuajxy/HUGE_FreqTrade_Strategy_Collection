@@ -9,3 +9,4 @@ pygments>=2.16.0
 pyyaml>=6.0.1
 pytest>=7.4.0
 # freqtrade>=2023.8  # Commented out due to TA-Lib dependency requiring Visual C++ Build Tools
+streamlit-plotly-events

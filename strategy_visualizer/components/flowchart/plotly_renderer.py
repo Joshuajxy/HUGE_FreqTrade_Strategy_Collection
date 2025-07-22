@@ -4,7 +4,7 @@ from typing import Dict, Tuple, List
 from utils.data_models import StrategyAnalysis
 from utils.freqtrade_interfaces import FreqtradeInterfaceDefinitions
 
-def create_flowchart_figure(G: nx.DiGraph, strategy: StrategyAnalysis) -> go.Figure:
+def create_flowchart_figure(G: nx.DiGraph, strategy: StrategyAnalysis, x_range=None, y_range=None) -> go.Figure:
     """创建TensorBoard风格的大框图流程图"""
     # 使用层次化布局
     pos = create_hierarchical_layout(G)
@@ -29,17 +29,56 @@ def create_flowchart_figure(G: nx.DiGraph, strategy: StrategyAnalysis) -> go.Fig
     
     # 更新布局，添加节点形状和连接线
     layout_config = create_tensorboard_layout()
-    
-    # 合并节点annotations和布局annotations
-    layout_annotations = layout_config.get('annotations', [])
-    all_annotations = annotations + layout_annotations
-    
-    # 创建完整的布局配置
-    layout_config['annotations'] = all_annotations
+
+    # 计算缩放比例（以x轴范围为主，初始范围[-1000, 1000]为100%）
+    default_xrange = [-1000, 1000]
+    default_yrange = [-200, 2200]
+    cur_xrange = x_range if x_range else layout_config['xaxis']['range']
+    cur_yrange = y_range if y_range else layout_config['yaxis']['range']
+    x_zoom = (default_xrange[1] - default_xrange[0]) / (cur_xrange[1] - cur_xrange[0])
+    y_zoom = (default_yrange[1] - default_yrange[0]) / (cur_yrange[1] - cur_yrange[0])
+    zoom_ratio = min(x_zoom, y_zoom)
+    zoom_percent = int(zoom_ratio * 100)
+    print(f"[Zoom Debug] x_range={cur_xrange}, y_range={cur_yrange}, zoom_percent={zoom_percent}")
+
+    # 缩放所有annotation字体
+    def scale_font(font, base):
+        f = dict(font) if font else {}
+        f['size'] = int(f.get('size', base) * zoom_ratio)
+        return f
+
+    scaled_annotations = []
+    for ann in annotations:
+        ann2 = dict(ann)
+        ann2['font'] = scale_font(ann.get('font'), 12)
+        scaled_annotations.append(ann2)
+    for ann in layout_config.get('annotations', []):
+        ann2 = dict(ann)
+        ann2['font'] = scale_font(ann.get('font'), 12)
+        scaled_annotations.append(ann2)
+
+    # 添加左上角缩放比例浮层
+    scaled_annotations.append({
+        'text': f'🔍 缩放: {zoom_percent}%',
+        'showarrow': False,
+        'xref': 'paper',
+        'yref': 'paper',
+        'x': 0.01,
+        'y': 0.99,
+        'xanchor': 'left',
+        'yanchor': 'top',
+        'font': {'color': '#1976D2', 'size': int(18 * zoom_ratio), 'family': 'monospace'},
+        'bgcolor': 'rgba(255,255,255,0.7)',
+        'bordercolor': '#1976D2',
+        'borderpad': 4
+    })
+
+    layout_config['annotations'] = scaled_annotations
     layout_config['shapes'] = shapes + edge_shapes
-    
+    layout_config['xaxis']['range'] = cur_xrange
+    layout_config['yaxis']['range'] = cur_yrange
+
     fig.update_layout(**layout_config)
-    
     return fig
 
 def create_hierarchical_layout(G: nx.DiGraph) -> Dict[str, Tuple[float, float]]:
@@ -60,8 +99,8 @@ def create_hierarchical_layout(G: nx.DiGraph) -> Dict[str, Tuple[float, float]]:
     }
     
     pos = {}
-    layer_height = 120  # 增加层间距以适应大框图
-    layer_width = 800   # 增加层宽度
+    layer_height = 180  # 显著增加层间距以避免重叠
+    layer_width = 1200  # 显著增加层宽度以适应更多节点
     
     for layer_idx, nodes in layers.items():
         y = layer_idx * layer_height
@@ -76,8 +115,14 @@ def create_hierarchical_layout(G: nx.DiGraph) -> Dict[str, Tuple[float, float]]:
         if len(existing_nodes) == 1:
             pos[existing_nodes[0]] = (0, y)
         else:
-            # 为多个节点分配x坐标
+            # 为多个节点分配x坐标，确保足够的间距
             total_width = layer_width
+            
+            # 根据节点数量动态调整间距
+            if len(existing_nodes) > 3:
+                # 对于多节点层，增加总宽度以确保足够间距
+                total_width = layer_width * (len(existing_nodes) / 3)
+            
             node_spacing = total_width / (len(existing_nodes) + 1)
             
             for i, node in enumerate(existing_nodes):
@@ -255,28 +300,33 @@ def create_curved_edges(G: nx.DiGraph, pos: Dict) -> List:
         mid_x = (x0 + x1) / 2
         mid_y = (y0 + y1) / 2
         
-        # 添加一些曲率
+        # 添加更大的曲率以避免穿过节点
         if abs(x1 - x0) > abs(y1 - y0):
             # 水平方向的连接，添加垂直曲率
-            control_y = mid_y + 30 if y1 > y0 else mid_y - 30
+            # 增加曲率以避免穿过节点
+            curve_factor = 60  # 增加曲率因子
+            control_y = mid_y + curve_factor if y1 > y0 else mid_y - curve_factor
             control_x = mid_x
         else:
             # 垂直方向的连接，添加水平曲率
-            control_x = mid_x + 50 if x1 > x0 else mid_x - 50
+            # 增加曲率以避免穿过节点
+            curve_factor = 100  # 增加曲率因子
+            control_x = mid_x + curve_factor if x1 > x0 else mid_x - curve_factor
             control_y = mid_y
         
         # 创建SVG路径字符串用于曲线
         path = f'M {x0},{y0} Q {control_x},{control_y} {x1},{y1}'
         
-        # 添加曲线
+        # 添加曲线，确保在节点下方
         edge_shapes.append({
             'type': 'path',
             'path': path,
             'line': {
                 'color': '#666',
-                'width': 4  # 粗线条
+                'width': 3  # 稍微减小线条宽度以减少视觉干扰
             },
-            'layer': 'below'
+            'layer': 'below',  # 确保线条在节点下方
+            'opacity': 0.8     # 稍微降低不透明度以减少视觉干扰
         })
         
         # 添加箭头
@@ -291,11 +341,12 @@ def create_curved_edges(G: nx.DiGraph, pos: Dict) -> List:
             dy_norm = dy / length
             
             # 箭头大小
-            arrow_size = 15
+            arrow_size = 12  # 稍微减小箭头大小
             
             # 计算箭头的三个点
-            arrow_tip_x = x1 - 20 * dx_norm  # 箭头尖端稍微向后
-            arrow_tip_y = y1 - 20 * dy_norm
+            # 将箭头向后移动更多，确保不会覆盖节点
+            arrow_tip_x = x1 - 30 * dx_norm  # 箭头尖端更向后
+            arrow_tip_y = y1 - 30 * dy_norm
             
             # 箭头的两个翼
             arrow_left_x = arrow_tip_x - arrow_size * dx_norm - arrow_size * dy_norm
@@ -305,16 +356,19 @@ def create_curved_edges(G: nx.DiGraph, pos: Dict) -> List:
             arrow_right_y = arrow_tip_y - arrow_size * dy_norm - arrow_size * dx_norm
             
             # 创建箭头形状
-            arrow_path = f'M {arrow_left_x},{arrow_left_y} L {x1},{y1} L {arrow_right_x},{arrow_right_y}'
+            arrow_path = f'M {arrow_left_x},{arrow_left_y} L {arrow_tip_x},{arrow_tip_y} L {arrow_right_x},{arrow_right_y} Z'  # 闭合路径
             
+            # 注意：这里箭头连接到arrow_tip而不是节点本身(x1,y1)，避免覆盖节点
             edge_shapes.append({
                 'type': 'path',
                 'path': arrow_path,
                 'line': {
                     'color': '#666',
-                    'width': 4
+                    'width': 3
                 },
-                'layer': 'below'
+                'fillcolor': '#666',  # 填充箭头
+                'layer': 'below',     # 确保箭头在节点下方
+                'opacity': 0.8        # 稍微降低不透明度
             })
     
     return edge_shapes
@@ -334,20 +388,33 @@ def create_tensorboard_layout() -> Dict:
             'showgrid': False,
             'zeroline': False,
             'showticklabels': False,
-            'range': [-500, 500]
+            'range': [-1000, 1000],  # 显著增加范围以适应更宽的布局和缩放空间
+            'scaleanchor': 'y',  # 保持x和y轴的比例一致
+            'constrain': 'domain',  # 确保缩放时保持比例
+            'fixedrange': False,   # 允许轴缩放
         },
         'yaxis': {
             'showgrid': False,
             'zeroline': False,
             'showticklabels': False,
-            'range': [-100, 1300]
+            'range': [-200, 2200],  # 显著增加范围以适应更高的布局和缩放空间
+            'constrain': 'domain',  # 确保缩放时保持比例
+            'fixedrange': False,    # 允许轴缩放
         },
-        'height': 1400,  # 增加高度以适应更多节点
+        'height': 1600,  # 增加高度以适应更多节点
+        'autosize': True,  # 自动调整大小
         'plot_bgcolor': '#FAFAFA',  # TensorBoard风格的背景色
         'paper_bgcolor': '#FFFFFF',
+        'dragmode': 'zoom',  # 启用拖动缩放
+        'modebar': {
+            'orientation': 'v',
+            'bgcolor': 'rgba(255, 255, 255, 0.7)',
+            'color': '#333',
+            'activecolor': '#2196F3'
+        },
         'annotations': [
             {
-                'text': '💡 点击节点查看详细信息 | 🔍 绿色=已实现 | 🟡 黄色=使用默认 | 🔵 蓝色=核心流程',
+                'text': '💡 点击节点查看详细信息 | 🔍 绿色=已实现 | 🟡 黄色=使用默认 | 🟦 蓝色=核心流程',
                 'showarrow': False,
                 'xref': 'paper',
                 'yref': 'paper',
@@ -356,6 +423,60 @@ def create_tensorboard_layout() -> Dict:
                 'xanchor': 'center',
                 'yanchor': 'top',
                 'font': {'color': '#666', 'size': 12}
+            },
+            {
+                'text': '👛️ 使用滚轮缩放 | 🔍 双击重置视图 | ⬅️⬆️⬇️➡️ 拖动平移',
+                'showarrow': False,
+                'xref': 'paper',
+                'yref': 'paper',
+                'x': 0.5,
+                'y': -0.04,
+                'xanchor': 'center',
+                'yanchor': 'top',
+                'font': {'color': '#666', 'size': 12}
+            }
+        ],
+        'updatemenus': [
+            {
+                'buttons': [
+                    {
+                        'args': [{'xaxis.autorange': True, 'yaxis.autorange': True}],
+                        'label': '🔍 重置视图',
+                        'method': 'relayout'
+                    },
+                    {
+                        'args': [{'width': 1200, 'height': 1600}],
+                        'label': '📷 适应屏幕',
+                        'method': 'relayout'
+                    }
+                ],
+                'direction': 'down',
+                'pad': {'r': 10, 't': 10},
+                'showactive': True,
+                'type': 'buttons',
+                'x': 0.05,
+                'xanchor': 'left',
+                'y': 1.02,
+                'yanchor': 'bottom',
+                'bgcolor': 'rgba(255, 255, 255, 0.8)',
+                'bordercolor': '#2196F3',
+                'font': {'color': '#333'}
             }
         ]
+    }
+
+
+def get_plotly_config() -> Dict:
+    """获取Plotly的配置选项，需要在Streamlit中单独传递"""
+    return {
+        'scrollZoom': True,     # 启用滚轮缩放
+        'displayModeBar': True, # 始终显示模式栏
+        'modeBarButtonsToAdd': [
+            'zoom2d',
+            'pan2d',
+            'zoomIn2d',
+            'zoomOut2d',
+            'resetScale2d'
+        ],
+        'doubleClick': 'reset'   # 双击重置视图
     }

@@ -21,15 +21,16 @@ def main():
     
     st.title("🚀 Freqtrade策略可视化分析工具")
     
-    # 侧边栏 - 文件上传和配置
-    with st.sidebar:
+    # 页面顶部 - 文件上传和配置
+    st.markdown("<div style='margin-bottom: 1.2em'></div>", unsafe_allow_html=True)
+    with st.container():
         st.header("📁 策略文件")
         uploaded_file = st.file_uploader(
             "上传策略分析文件", 
             type=['json'],
-            help="请上传经过LM处理的标准化策略分析JSON文件"
+            help="请上传经过LM处理的标准化策略分析JSON文件",
+            key="top_file_uploader"
         )
-        
         if uploaded_file:
             try:
                 strategy_data = load_strategy_file(uploaded_file)
@@ -40,27 +41,41 @@ def main():
                 st.error(f"文件加载失败: {e.message}")
             except Exception as e:
                 st.error(f"未知错误: {str(e)}")
-    
+
     # 主界面布局
     if 'current_strategy' in st.session_state:
-        # 创建两列布局
-        col1, col2 = st.columns([2, 1])
+        # 右侧信息面板是否显示
+        if 'show_info_panel' not in st.session_state:
+            st.session_state.show_info_panel = True
+        col1, col2 = st.columns([4, 0.01] if not st.session_state.show_info_panel else [2, 1])
         
         with col1:
             st.header("📊 策略执行流程图")
             from components.flowchart import render_flowchart
             render_flowchart(st.session_state.current_strategy)
         
+        def toggle_info_panel():
+            st.session_state.show_info_panel = not st.session_state.show_info_panel
+
         with col2:
-            st.header("📋 策略详情")
-            render_strategy_details(st.session_state.current_strategy)
+            st.button(
+                "隐藏详情面板" if st.session_state.show_info_panel else "显示详情面板",
+                key="toggle_info_panel",
+                help="点击隐藏/显示右侧详情信息，最大化流程图区域",
+                on_click=toggle_info_panel
+            )
+            if st.session_state.show_info_panel:
+                st.header("📋 策略详情")
+                from components.strategy_details import render_strategy_details
+                render_strategy_details(st.session_state.current_strategy)
+
         
         # 回测面板
         st.header("🔄 回测分析")
         from components.backtest import render_backtest_panel
         render_backtest_panel(st.session_state.current_strategy)
     else:
-        st.info("👆 请在侧边栏上传策略分析文件开始使用")
+        st.info("👆 请在页面上方上传策略分析文件开始使用")
         
         # 显示示例文件信息
         st.subheader("📖 使用说明")

@@ -1,6 +1,6 @@
 import streamlit as st
 from .graph_builder import create_strategy_graph
-from .plotly_renderer import create_flowchart_figure, create_legend_info
+from .plotly_renderer import create_flowchart_figure, create_legend_info, get_plotly_config
 from .event_handler import handle_node_selection, get_selected_node
 from utils.data_models import StrategyAnalysis
 
@@ -13,24 +13,45 @@ def render_flowchart(strategy: StrategyAnalysis):
     # 创建网络图
     G = create_strategy_graph(strategy)
     
-    # 创建Plotly图形
-    fig = create_flowchart_figure(G, strategy)
-    
-    # 显示图形并处理交互
-    selected_points = st.plotly_chart(
-        fig, 
-        use_container_width=True, 
-        key="strategy_flowchart",
-        on_select="rerun"
+    # 记录当前缩放/平移的坐标轴范围
+    if 'flowchart_xrange' not in st.session_state:
+        st.session_state.flowchart_xrange = [-1000, 1000]
+    if 'flowchart_yrange' not in st.session_state:
+        st.session_state.flowchart_yrange = [-200, 2200]
+
+    # 创建Plotly图形，传递当前坐标轴范围
+    fig = create_flowchart_figure(
+        G, strategy,
+        x_range=st.session_state.flowchart_xrange,
+        y_range=st.session_state.flowchart_yrange
     )
-    
-    # 处理节点点击事件
-    if selected_points and hasattr(selected_points, 'selection') and selected_points.selection:
-        handle_node_selection(selected_points.selection, strategy)
-    
+
+    # 使用 streamlit-plotly-events 捕获 zoom/pan 事件
+    # ⚠️ streamlit-plotly-events 不支持 zoom/pan/relayout 事件，无法实现滚轮缩放实时同步
+    # 恢复 st.plotly_chart 用于缩放/平移，config 参数可用，但仅在刷新/按钮等事件后同步
+    chart_event = st.plotly_chart(
+        fig,
+        use_container_width=True,
+        key="strategy_flowchart",
+        config=get_plotly_config()
+    )
+
+    # 监听缩放/平移事件，自动更新坐标轴范围（仅在 Streamlit 触发 rerun 时有效）
+    if hasattr(chart_event, 'relayoutData') and isinstance(chart_event.relayoutData, dict) and chart_event.relayoutData:
+        relayout = chart_event.relayoutData
+        updated = False
+        if 'xaxis.range[0]' in relayout and 'xaxis.range[1]' in relayout:
+            st.session_state.flowchart_xrange = [relayout['xaxis.range[0]'], relayout['xaxis.range[1]']]
+            updated = True
+        if 'yaxis.range[0]' in relayout and 'yaxis.range[1]' in relayout:
+            st.session_state.flowchart_yrange = [relayout['yaxis.range[0]'], relayout['yaxis.range[1]']]
+            updated = True
+        if updated:
+            st.experimental_rerun()
+
     # 显示图例
     render_flowchart_legend()
-    
+
     # 显示选中节点的详细信息
     selected_node = get_selected_node()
     if selected_node:
