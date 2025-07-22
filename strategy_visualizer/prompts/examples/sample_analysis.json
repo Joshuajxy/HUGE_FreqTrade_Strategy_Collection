@@ -1,0 +1,122 @@
+{
+  "strategy_name": "SampleBBRSI",
+  "description": "Sample Bollinger Bands + RSI Strategy. This strategy uses Bollinger Bands and RSI indicators to generate buy/sell signals",
+  "author": "Sample Author",
+  "version": "1.0",
+  "interfaces": {
+    "populate_indicators": {
+      "implemented": true,
+      "description": "Calculate technical indicators including RSI and Bollinger Bands",
+      "pseudocode": "1. Calculate RSI with period 14\n2. Calculate Bollinger Bands with window 20, stds 2\n3. Extract upper, lower, and middle bands\n4. Return dataframe with indicators",
+      "input_params": [
+        {
+          "name": "dataframe",
+          "type": "DataFrame",
+          "description": "OHLCV price data",
+          "example": "pandas DataFrame with columns: open, high, low, close, volume"
+        },
+        {
+          "name": "metadata",
+          "type": "dict",
+          "description": "Strategy metadata including pair information",
+          "example": "{'pair': 'BTC/USDT'}"
+        }
+      ],
+      "output_description": "DataFrame with added technical indicators: rsi, bb_lowerband, bb_upperband, bb_middleband",
+      "logic_explanation": "Uses TA-Lib to calculate RSI(14) and qtpylib for Bollinger Bands(20,2). These indicators help identify overbought/oversold conditions and price volatility."
+    },
+    "populate_buy_trend": {
+      "implemented": true,
+      "description": "Generate buy signals based on RSI and Bollinger Bands",
+      "pseudocode": "1. Check if RSI > 25 (above oversold)\n2. Check if close price < lower Bollinger Band\n3. If both conditions true, set buy = 1\n4. Return dataframe with buy signals",
+      "input_params": [
+        {
+          "name": "dataframe",
+          "type": "DataFrame",
+          "description": "OHLCV data with calculated indicators",
+          "example": "DataFrame with rsi, bb_lowerband columns"
+        },
+        {
+          "name": "metadata",
+          "type": "dict",
+          "description": "Strategy metadata",
+          "example": "{'pair': 'BTC/USDT'}"
+        }
+      ],
+      "output_description": "DataFrame with buy column indicating buy signals (1 = buy, 0 = no action)",
+      "logic_explanation": "Looks for oversold bounce opportunities when price drops below lower Bollinger Band but RSI shows some strength (>25). This avoids catching falling knives while identifying potential reversal points."
+    },
+    "populate_sell_trend": {
+      "implemented": true,
+      "description": "Generate sell signals based on RSI and Bollinger Bands",
+      "pseudocode": "1. Check if RSI > 70 (overbought)\n2. Check if close price > upper Bollinger Band\n3. If both conditions true, set sell = 1\n4. Return dataframe with sell signals",
+      "input_params": [
+        {
+          "name": "dataframe",
+          "type": "DataFrame",
+          "description": "OHLCV data with calculated indicators",
+          "example": "DataFrame with rsi, bb_upperband columns"
+        },
+        {
+          "name": "metadata",
+          "type": "dict",
+          "description": "Strategy metadata",
+          "example": "{'pair': 'BTC/USDT'}"
+        }
+      ],
+      "output_description": "DataFrame with sell column indicating sell signals (1 = sell, 0 = no action)",
+      "logic_explanation": "Identifies overbought conditions when price extends above upper Bollinger Band and RSI exceeds 70. This suggests potential price exhaustion and reversal opportunity."
+    },
+    "custom_stoploss": {
+      "implemented": false,
+      "description": "Custom stoploss logic not implemented",
+      "pseudocode": "",
+      "input_params": [],
+      "output_description": "Uses default stoploss of -36%",
+      "logic_explanation": "Strategy relies on fixed stoploss rather than dynamic stoploss logic."
+    }
+  },
+  "indicators": [
+    {
+      "name": "RSI",
+      "parameters": {"timeperiod": 14},
+      "description": "Relative Strength Index - momentum oscillator measuring speed and magnitude of price changes"
+    },
+    {
+      "name": "Bollinger Bands",
+      "parameters": {"window": 20, "stds": 2},
+      "description": "Volatility bands consisting of moving average with upper/lower bands at 2 standard deviations"
+    }
+  ],
+  "parameters": {
+    "roi": {
+      "0": 0.215,
+      "21": 0.055,
+      "48": 0.013,
+      "125": 0
+    },
+    "stoploss": -0.36,
+    "timeframe": "4h",
+    "startup_candle_count": 30
+  },
+  "buy_conditions": [
+    {
+      "description": "RSI oversold recovery with Bollinger Band support",
+      "logic": "RSI > 25 AND close < bb_lowerband",
+      "indicators_used": ["rsi", "bb_lowerband"]
+    }
+  ],
+  "sell_conditions": [
+    {
+      "description": "RSI overbought with Bollinger Band resistance",
+      "logic": "RSI > 70 AND close > bb_upperband", 
+      "indicators_used": ["rsi", "bb_upperband"]
+    }
+  ],
+  "risk_management": {
+    "stoploss_type": "fixed",
+    "trailing_stop": false,
+    "custom_stoploss": false,
+    "position_sizing": "default"
+  }
+}

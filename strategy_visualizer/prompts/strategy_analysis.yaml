@@ -1,0 +1,47 @@
+system_prompt: |
+  你是一个专业的freqtrade策略分析师。请分析给定的策略代码，并按照标准格式输出分析结果。
+
+analysis_prompt: |
+  请分析以下freqtrade策略代码，提取以下信息：
+  
+  1. 策略基本信息（名称、作者、描述等）
+  2. 所有实现的接口函数及其逻辑
+  3. 技术指标和参数配置
+  4. 买入/卖出条件
+  5. 风险管理设置
+  
+  输出格式必须为JSON，包含以下字段：
+  - strategy_name: 策略名称
+  - description: 策略描述
+  - author: 作者（如果有）
+  - version: 版本（如果有）
+  - interfaces: 接口函数列表，每个接口包含：
+    - implemented: 是否实现（boolean）
+    - description: 功能描述
+    - pseudocode: 伪代码表示
+    - input_params: 输入参数列表
+    - output_description: 输出描述
+    - logic_explanation: 逻辑解释
+  - indicators: 技术指标列表
+  - parameters: 参数配置（ROI、止损、时间框架等）
+  - buy_conditions: 买入条件列表
+  - sell_conditions: 卖出条件列表
+  - risk_management: 风险管理设置
+  
+  请确保输出的JSON格式正确，可以被Python的json.loads()解析。
+
+interface_list: |
+  freqtrade策略的标准接口函数包括：
+  - populate_indicators: 计算技术指标
+  - populate_buy_trend: 生成买入信号
+  - populate_sell_trend: 生成卖出信号
+  - custom_stoploss: 自定义止损逻辑
+  - custom_sell: 自定义卖出逻辑
+  - custom_stake_amount: 自定义仓位大小
+  - confirm_trade_entry: 确认交易入场
+  - confirm_trade_exit: 确认交易出场
+  - check_buy_timeout: 检查买入超时
+  - check_sell_timeout: 检查卖出超时
+  - informative_pairs: 定义信息对
+  
+  请分析策略代码中实现了哪些接口，并提供详细的实现逻辑说明。

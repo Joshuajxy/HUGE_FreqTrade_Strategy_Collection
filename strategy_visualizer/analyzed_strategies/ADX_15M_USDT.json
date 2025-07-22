@@ -1,0 +1,129 @@
+{
+  "strategy_name": "ADX_15M_USDT",
+  "description": "ADX-based directional movement strategy optimized for 15-minute timeframe on USDT pairs. Uses directional indicators and momentum for trend following.",
+  "author": "Unknown",
+  "version": "1.0",
+  "interfaces": {
+    "populate_indicators": {
+      "implemented": true,
+      "description": "Calculate ADX, directional movement indicators, SAR, and momentum",
+      "pseudocode": "1. Calculate ADX with period 14\n2. Calculate Plus DI with period 25\n3. Calculate Minus DI with period 25\n4. Calculate Parabolic SAR\n5. Calculate Momentum with period 14\n6. Duplicate indicators with 'sell-' prefix for exit signals",
+      "input_params": [
+        {
+          "name": "dataframe",
+          "type": "DataFrame",
+          "description": "OHLCV price data",
+          "example": "pandas DataFrame with columns: open, high, low, close, volume"
+        },
+        {
+          "name": "metadata",
+          "type": "dict",
+          "description": "Strategy metadata including pair information",
+          "example": "{'pair': 'BTC/USDT'}"
+        }
+      ],
+      "output_description": "DataFrame with ADX indicators: adx, plus_di, minus_di, sar, mom and their sell counterparts",
+      "logic_explanation": "Uses ADX system to measure trend strength and directional movement indicators to determine trend direction."
+    },
+    "populate_buy_trend": {
+      "implemented": true,
+      "description": "Generate buy signals when Plus DI crosses above Minus DI with strong trend",
+      "pseudocode": "1. Check ADX > 16 (minimum trend strength)\n2. Check Minus DI > 4 (directional filter)\n3. Check Plus DI > 20 (bullish strength)\n4. Check Plus DI crosses above Minus DI\n5. If all conditions true, set buy = 1",
+      "input_params": [
+        {
+          "name": "dataframe",
+          "type": "DataFrame",
+          "description": "OHLCV data with calculated indicators",
+          "example": "DataFrame with ADX indicators"
+        },
+        {
+          "name": "metadata",
+          "type": "dict",
+          "description": "Strategy metadata",
+          "example": "{'pair': 'BTC/USDT'}"
+        }
+      ],
+      "output_description": "DataFrame with buy column indicating buy signals (1 = buy, 0 = no action)",
+      "logic_explanation": "Identifies bullish trend initiation when directional movement favors upward price action with sufficient trend strength."
+    },
+    "populate_sell_trend": {
+      "implemented": true,
+      "description": "Generate sell signals when Minus DI crosses above Plus DI with very strong trend",
+      "pseudocode": "1. Check ADX > 43 (strong trend required)\n2. Check Minus DI > 22 (bearish strength)\n3. Check Plus DI > 20 (directional filter)\n4. Check Minus DI crosses above Plus DI\n5. If all conditions true, set sell = 1",
+      "input_params": [
+        {
+          "name": "dataframe",
+          "type": "DataFrame",
+          "description": "OHLCV data with calculated indicators",
+          "example": "DataFrame with ADX indicators"
+        },
+        {
+          "name": "metadata",
+          "type": "dict",
+          "description": "Strategy metadata",
+          "example": "{'pair': 'BTC/USDT'}"
+        }
+      ],
+      "output_description": "DataFrame with sell column indicating sell signals (1 = sell, 0 = no action)",
+      "logic_explanation": "Identifies bearish trend reversal when directional movement strongly favors downward price action in trending markets."
+    }
+  },
+  "indicators": [
+    {
+      "name": "ADX",
+      "parameters": {"timeperiod": 14},
+      "description": "Average Directional Index - measures trend strength"
+    },
+    {
+      "name": "Plus DI",
+      "parameters": {"timeperiod": 25},
+      "description": "Plus Directional Indicator - measures upward price movement"
+    },
+    {
+      "name": "Minus DI",
+      "parameters": {"timeperiod": 25},
+      "description": "Minus Directional Indicator - measures downward price movement"
+    },
+    {
+      "name": "SAR",
+      "parameters": {},
+      "description": "Parabolic Stop and Reverse - trend following indicator"
+    },
+    {
+      "name": "Momentum",
+      "parameters": {"timeperiod": 14},
+      "description": "Price momentum indicator"
+    }
+  ],
+  "parameters": {
+    "roi": {
+      "0": 0.26552,
+      "30": 0.10255,
+      "210": 0.03545,
+      "540": 0
+    },
+    "stoploss": -0.1255,
+    "timeframe": "15m",
+    "startup_candle_count": 25
+  },
+  "buy_conditions": [
+    {
+      "description": "Bullish directional crossover with trend confirmation",
+      "logic": "ADX > 16 AND Minus_DI > 4 AND Plus_DI > 20 AND Plus_DI crosses above Minus_DI",
+      "indicators_used": ["adx", "plus_di", "minus_di"]
+    }
+  ],
+  "sell_conditions": [
+    {
+      "description": "Bearish directional crossover with strong trend",
+      "logic": "ADX > 43 AND Minus_DI > 22 AND Plus_DI > 20 AND Minus_DI crosses above Plus_DI",
+      "indicators_used": ["adx", "plus_di", "minus_di"]
+    }
+  ],
+  "risk_management": {
+    "stoploss_type": "fixed",
+    "trailing_stop": false,
+    "custom_stoploss": false,
+    "position_sizing": "default"
+  }
+}

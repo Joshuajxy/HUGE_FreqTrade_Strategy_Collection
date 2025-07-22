@@ -1,0 +1,136 @@
+{
+  "strategy_name": "adaptive",
+  "description": "An adaptive momentum strategy using MAMA/FAMA, KAMA, CTI, Williams %R, and RSI indicators for precise entry timing in trending markets.",
+  "author": "@jilv220",
+  "version": "1.0",
+  "interfaces": {
+    "populate_indicators": {
+      "implemented": true,
+      "description": "Calculate adaptive moving averages and momentum oscillators",
+      "pseudocode": "1. Calculate HL2 (high+low)/2\n2. Calculate MAMA/FAMA with fast/slow limits\n3. Calculate MAMA difference ratio\n4. Calculate KAMA with period 84\n5. Calculate CTI with period 20\n6. Calculate Williams %R with period 14\n7. Calculate RSI with periods 84 and 112",
+      "input_params": [
+        {
+          "name": "dataframe",
+          "type": "DataFrame",
+          "description": "OHLCV price data",
+          "example": "pandas DataFrame with columns: open, high, low, close, volume"
+        },
+        {
+          "name": "metadata",
+          "type": "dict",
+          "description": "Strategy metadata including pair information",
+          "example": "{'pair': 'BTC/USDT'}"
+        }
+      ],
+      "output_description": "DataFrame with adaptive indicators: mama, fama, mama_diff, kama, cti, r_14, rsi_84, rsi_112",
+      "logic_explanation": "Uses adaptive moving averages (MAMA/FAMA) that adjust to market volatility, combined with momentum oscillators for precise timing."
+    },
+    "populate_buy_trend": {
+      "implemented": true,
+      "description": "Generate buy signals using multiple adaptive indicators with trend and momentum confirmation",
+      "pseudocode": "1. Check KAMA > FAMA (trend confirmation)\n2. Check FAMA > MAMA * 0.981 (adaptive trend)\n3. Check Williams %R < -61.3 (oversold)\n4. Check MAMA difference < -0.025\n5. Check CTI < -0.715 (momentum)\n6. Check recent high conditions for pullback\n7. Check RSI conditions < 60\n8. If all conditions true, set buy = 1",
+      "input_params": [
+        {
+          "name": "dataframe",
+          "type": "DataFrame",
+          "description": "OHLCV data with calculated indicators",
+          "example": "DataFrame with adaptive indicators"
+        },
+        {
+          "name": "metadata",
+          "type": "dict",
+          "description": "Strategy metadata",
+          "example": "{'pair': 'BTC/USDT'}"
+        }
+      ],
+      "output_description": "DataFrame with buy column indicating buy signals (1 = buy, 0 = no action)",
+      "logic_explanation": "Complex multi-factor model that looks for oversold conditions in trending markets with adaptive trend confirmation and momentum divergence."
+    },
+    "populate_sell_trend": {
+      "implemented": true,
+      "description": "No sell signals generated - relies on ROI and stoploss",
+      "pseudocode": "Empty condition - no active sell signals",
+      "input_params": [
+        {
+          "name": "dataframe",
+          "type": "DataFrame",
+          "description": "OHLCV data with calculated indicators",
+          "example": "DataFrame with indicators"
+        },
+        {
+          "name": "metadata",
+          "type": "dict",
+          "description": "Strategy metadata",
+          "example": "{'pair': 'BTC/USDT'}"
+        }
+      ],
+      "output_description": "DataFrame with sell column (always 0)",
+      "logic_explanation": "Strategy relies on ROI targets and stoploss for exits rather than technical sell signals."
+    }
+  },
+  "indicators": [
+    {
+      "name": "MAMA/FAMA",
+      "parameters": {"fastlimit": 0.25, "slowlimit": 0.025},
+      "description": "Mesa Adaptive Moving Average - adapts to market volatility and cycle"
+    },
+    {
+      "name": "KAMA",
+      "parameters": {"timeperiod": 84},
+      "description": "Kaufman Adaptive Moving Average - trend following with noise reduction"
+    },
+    {
+      "name": "CTI",
+      "parameters": {"length": 20},
+      "description": "Correlation Trend Indicator - measures trend strength"
+    },
+    {
+      "name": "Williams %R",
+      "parameters": {"period": 14},
+      "description": "Williams Percent Range - momentum oscillator for overbought/oversold conditions"
+    },
+    {
+      "name": "RSI",
+      "parameters": {"timeperiod_84": 84, "timeperiod_112": 112},
+      "description": "Relative Strength Index with longer periods for trend confirmation"
+    }
+  ],
+  "parameters": {
+    "roi": {
+      "0": 0.02
+    },
+    "stoploss": -0.109,
+    "timeframe": "5m",
+    "startup_candle_count": 288
+  },
+  "buy_conditions": [
+    {
+      "description": "Adaptive trend confirmation with oversold momentum",
+      "logic": "KAMA > FAMA AND FAMA > MAMA*0.981 AND Williams%R < -61.3 AND MAMA_diff < -0.025 AND CTI < -0.715",
+      "indicators_used": ["kama", "fama", "mama", "r_14", "mama_diff", "cti"]
+    },
+    {
+      "description": "Recent high pullback confirmation",
+      "logic": "48-period max >= close*1.05 AND 288-period max >= close*1.125",
+      "indicators_used": ["close"]
+    },
+    {
+      "description": "RSI trend filter",
+      "logic": "RSI_84 < 60 AND RSI_112 < 60",
+      "indicators_used": ["rsi_84", "rsi_112"]
+    }
+  ],
+  "sell_conditions": [
+    {
+      "description": "No active sell conditions - relies on ROI/stoploss",
+      "logic": "No conditions",
+      "indicators_used": []
+    }
+  ],
+  "risk_management": {
+    "stoploss_type": "fixed",
+    "trailing_stop": false,
+    "custom_stoploss": false,
+    "position_sizing": "default"
+  }
+}

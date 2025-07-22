@@ -1,0 +1,163 @@
+{
+  "strategy_name": "ActionZone",
+  "description": "A trend-following strategy using EMA crossover with dynamic position sizing based on risk management. Uses custom stoploss based on lowest price over a period.",
+  "author": "Unknown",
+  "version": "1.0",
+  "interfaces": {
+    "populate_indicators": {
+      "implemented": true,
+      "description": "Calculate EMA indicators and lowest price for risk management",
+      "pseudocode": "1. Calculate MIN (lowest value) over min_price_period (14)\n2. Calculate fast EMA with period 12\n3. Calculate slow EMA with period 26\n4. Store as fastMA and slowMA columns",
+      "input_params": [
+        {
+          "name": "dataframe",
+          "type": "DataFrame",
+          "description": "OHLCV price data",
+          "example": "pandas DataFrame with columns: open, high, low, close, volume"
+        },
+        {
+          "name": "metadata",
+          "type": "dict",
+          "description": "Strategy metadata including pair information",
+          "example": "{'pair': 'BTC/USDT'}"
+        }
+      ],
+      "output_description": "DataFrame with added indicators: lowest, fastMA, slowMA",
+      "logic_explanation": "Uses TA-Lib to calculate the lowest price over 14 periods for risk management, and fast/slow EMAs for trend detection."
+    },
+    "populate_buy_trend": {
+      "implemented": true,
+      "description": "Generate buy signals based on EMA crossover and price action",
+      "pseudocode": "1. Check if fastMA > slowMA (bullish trend)\n2. Check if close > fastMA (price above fast EMA)\n3. Check volume > 0\n4. If all conditions true, set buy = 1",
+      "input_params": [
+        {
+          "name": "dataframe",
+          "type": "DataFrame",
+          "description": "OHLCV data with calculated indicators",
+          "example": "DataFrame with fastMA, slowMA columns"
+        },
+        {
+          "name": "metadata",
+          "type": "dict",
+          "description": "Strategy metadata",
+          "example": "{'pair': 'BTC/USDT'}"
+        }
+      ],
+      "output_description": "DataFrame with buy column indicating buy signals (1 = buy, 0 = no action)",
+      "logic_explanation": "Looks for bullish trend confirmation when fast EMA is above slow EMA and price breaks above fast EMA, indicating momentum continuation."
+    },
+    "populate_sell_trend": {
+      "implemented": true,
+      "description": "Generate sell signals based on EMA crossover and price action",
+      "pseudocode": "1. Check if fastMA < slowMA (bearish trend)\n2. Check if close < fastMA (price below fast EMA)\n3. Check volume > 0\n4. If all conditions true, set sell = 1",
+      "input_params": [
+        {
+          "name": "dataframe",
+          "type": "DataFrame",
+          "description": "OHLCV data with calculated indicators",
+          "example": "DataFrame with fastMA, slowMA columns"
+        },
+        {
+          "name": "metadata",
+          "type": "dict",
+          "description": "Strategy metadata",
+          "example": "{'pair': 'BTC/USDT'}"
+        }
+      ],
+      "output_description": "DataFrame with sell column indicating sell signals (1 = sell, 0 = no action)",
+      "logic_explanation": "Identifies bearish trend when fast EMA drops below slow EMA and price breaks below fast EMA, signaling trend reversal."
+    },
+    "custom_stoploss": {
+      "implemented": true,
+      "description": "Dynamic stoploss based on lowest price over period",
+      "pseudocode": "1. Get latest candle data\n2. Extract lowest price from indicators\n3. Calculate percentage difference from current rate\n4. Return stoploss percentage",
+      "input_params": [
+        {
+          "name": "pair",
+          "type": "str",
+          "description": "Trading pair",
+          "example": "BTC/USDT"
+        },
+        {
+          "name": "current_rate",
+          "type": "float",
+          "description": "Current market price",
+          "example": "45000.0"
+        }
+      ],
+      "output_description": "Dynamic stoploss percentage based on lowest price",
+      "logic_explanation": "Uses the lowest price over the specified period as stoploss level, providing dynamic risk management that adapts to market volatility."
+    },
+    "custom_stake_amount": {
+      "implemented": true,
+      "description": "Position sizing based on maximum loss per trade",
+      "pseudocode": "1. Get stop price from lowest indicator\n2. Calculate volume based on max_loss_per_trade\n3. Calculate stake amount = volume * current_rate\n4. Return calculated stake amount",
+      "input_params": [
+        {
+          "name": "pair",
+          "type": "str",
+          "description": "Trading pair",
+          "example": "BTC/USDT"
+        },
+        {
+          "name": "current_rate",
+          "type": "float",
+          "description": "Current market price",
+          "example": "45000.0"
+        }
+      ],
+      "output_description": "Calculated stake amount based on risk management",
+      "logic_explanation": "Implements fixed dollar risk per trade by calculating position size based on the difference between entry price and stop loss level."
+    }
+  },
+  "indicators": [
+    {
+      "name": "MIN (Lowest)",
+      "parameters": {"timeperiod": 14},
+      "description": "Lowest value over specified period for dynamic stoploss calculation"
+    },
+    {
+      "name": "EMA Fast",
+      "parameters": {"timeperiod": 12},
+      "description": "Fast Exponential Moving Average for trend detection"
+    },
+    {
+      "name": "EMA Slow",
+      "parameters": {"timeperiod": 26},
+      "description": "Slow Exponential Moving Average for trend confirmation"
+    }
+  ],
+  "parameters": {
+    "roi": {
+      "0": 100000
+    },
+    "stoploss": -1.0,
+    "timeframe": "1d",
+    "startup_candle_count": 30,
+    "use_custom_stoploss": true,
+    "trailing_stop": false,
+    "min_price_period": 14,
+    "max_loss_per_trade": 10
+  },
+  "buy_conditions": [
+    {
+      "description": "EMA bullish crossover with price confirmation",
+      "logic": "fastMA > slowMA AND close > fastMA AND volume > 0",
+      "indicators_used": ["fastMA", "slowMA", "close", "volume"]
+    }
+  ],
+  "sell_conditions": [
+    {
+      "description": "EMA bearish crossover with price confirmation",
+      "logic": "fastMA < slowMA AND close < fastMA AND volume > 0",
+      "indicators_used": ["fastMA", "slowMA", "close", "volume"]
+    }
+  ],
+  "risk_management": {
+    "stoploss_type": "custom_dynamic",
+    "trailing_stop": false,
+    "custom_stoploss": true,
+    "position_sizing": "risk_based",
+    "max_loss_per_trade": 10
+  }
+}

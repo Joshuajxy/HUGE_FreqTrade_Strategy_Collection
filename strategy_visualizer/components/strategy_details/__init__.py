@@ -1,0 +1,1 @@
+from .main import render_strategy_details

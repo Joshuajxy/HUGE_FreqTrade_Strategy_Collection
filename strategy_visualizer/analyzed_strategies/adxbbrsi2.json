@@ -1,0 +1,140 @@
+{
+  "strategy_name": "adxbbrsi2",
+  "description": "Multi-indicator strategy combining ADX trend strength, Bollinger Bands, RSI, Stochastic, and MFI for comprehensive market analysis with trailing stop.",
+  "author": "Gert Wohlgemuth",
+  "version": "1.0",
+  "interfaces": {
+    "populate_indicators": {
+      "implemented": true,
+      "description": "Calculate comprehensive set of technical indicators for trend, momentum, and volatility analysis",
+      "pseudocode": "1. Calculate ADX with period 14\n2. Calculate RSI with period 14\n3. Calculate Bollinger Bands (20, 2)\n4. Calculate Stochastic Fast (FastK, FastD)\n5. Calculate MFI (Money Flow Index)\n6. Calculate SAR (Parabolic Stop and Reverse)",
+      "input_params": [
+        {
+          "name": "dataframe",
+          "type": "DataFrame",
+          "description": "OHLCV price data",
+          "example": "pandas DataFrame with columns: open, high, low, close, volume"
+        },
+        {
+          "name": "metadata",
+          "type": "dict",
+          "description": "Strategy metadata including pair information",
+          "example": "{'pair': 'BTC/USDT'}"
+        }
+      ],
+      "output_description": "DataFrame with indicators: adx, rsi, bb_lowerband, bb_middleband, bb_upperband, fastd, fastk, mfi, sar",
+      "logic_explanation": "Combines trend strength (ADX), momentum (RSI, Stochastic), volatility (Bollinger Bands), and money flow (MFI) for comprehensive analysis."
+    },
+    "populate_buy_trend": {
+      "implemented": true,
+      "description": "Generate buy signals using ADX strength, Stochastic oversold, and Bollinger Band support",
+      "pseudocode": "1. Check ADX > 47 (strong trend required)\n2. Check FastD < 41 (oversold condition)\n3. Check close < bb_lowerband (price below lower band)\n4. If all conditions true, set buy = 1",
+      "input_params": [
+        {
+          "name": "dataframe",
+          "type": "DataFrame",
+          "description": "OHLCV data with calculated indicators",
+          "example": "DataFrame with technical indicators"
+        },
+        {
+          "name": "metadata",
+          "type": "dict",
+          "description": "Strategy metadata",
+          "example": "{'pair': 'BTC/USDT'}"
+        }
+      ],
+      "output_description": "DataFrame with buy column indicating buy signals (1 = buy, 0 = no action)",
+      "logic_explanation": "Looks for oversold bounces in strong trending markets when price touches lower Bollinger Band support."
+    },
+    "populate_sell_trend": {
+      "implemented": true,
+      "description": "Generate sell signals using ADX strength, MFI overbought, and Stochastic conditions",
+      "pseudocode": "1. Check ADX > 67 (very strong trend)\n2. Check MFI > 97 (extreme overbought money flow)\n3. Check FastD < 74 (stochastic condition)\n4. If all conditions true, set sell = 1",
+      "input_params": [
+        {
+          "name": "dataframe",
+          "type": "DataFrame",
+          "description": "OHLCV data with calculated indicators",
+          "example": "DataFrame with technical indicators"
+        },
+        {
+          "name": "metadata",
+          "type": "dict",
+          "description": "Strategy metadata",
+          "example": "{'pair': 'BTC/USDT'}"
+        }
+      ],
+      "output_description": "DataFrame with sell column indicating sell signals (1 = sell, 0 = no action)",
+      "logic_explanation": "Identifies extreme overbought conditions in very strong trends when money flow reaches extreme levels."
+    }
+  },
+  "indicators": [
+    {
+      "name": "ADX",
+      "parameters": {"timeperiod": 14},
+      "description": "Average Directional Index - measures trend strength"
+    },
+    {
+      "name": "RSI",
+      "parameters": {"timeperiod": 14},
+      "description": "Relative Strength Index - momentum oscillator"
+    },
+    {
+      "name": "Bollinger Bands",
+      "parameters": {"window": 20, "stds": 2},
+      "description": "Volatility bands for support/resistance levels"
+    },
+    {
+      "name": "Stochastic Fast",
+      "parameters": {},
+      "description": "Fast Stochastic oscillator for overbought/oversold conditions"
+    },
+    {
+      "name": "MFI",
+      "parameters": {},
+      "description": "Money Flow Index - volume-weighted momentum indicator"
+    },
+    {
+      "name": "SAR",
+      "parameters": {},
+      "description": "Parabolic Stop and Reverse - trend following indicator"
+    }
+  ],
+  "parameters": {
+    "roi": {
+      "0": 0.16083,
+      "33": 0.04139,
+      "85": 0.01225,
+      "197": 0
+    },
+    "stoploss": -0.32237,
+    "timeframe": "1h",
+    "startup_candle_count": 20,
+    "trailing_stop": true,
+    "trailing_stop_positive": 0.1195,
+    "trailing_stop_positive_offset": 0.1568,
+    "trailing_only_offset_is_reached": true
+  },
+  "buy_conditions": [
+    {
+      "description": "Strong trend with oversold bounce at Bollinger Band support",
+      "logic": "ADX > 47 AND FastD < 41 AND close < bb_lowerband",
+      "indicators_used": ["adx", "fastd", "close", "bb_lowerband"]
+    }
+  ],
+  "sell_conditions": [
+    {
+      "description": "Extreme overbought conditions in very strong trend",
+      "logic": "ADX > 67 AND MFI > 97 AND FastD < 74",
+      "indicators_used": ["adx", "mfi", "fastd"]
+    }
+  ],
+  "risk_management": {
+    "stoploss_type": "fixed",
+    "trailing_stop": true,
+    "custom_stoploss": false,
+    "position_sizing": "default",
+    "trailing_stop_positive": 0.1195,
+    "trailing_stop_positive_offset": 0.1568
+  }
+}

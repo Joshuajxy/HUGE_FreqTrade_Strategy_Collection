@@ -1,0 +1,132 @@
+{
+  "strategy_name": "AdxSmas",
+  "description": "Simple ADX and SMA crossover strategy using trend strength confirmation with short and long moving averages. Uses Freqtrade v3 interface.",
+  "author": "Gert Wohlgemuth",
+  "version": "1.0",
+  "interfaces": {
+    "populate_indicators": {
+      "implemented": true,
+      "description": "Calculate ADX for trend strength and short/long SMAs for crossover signals",
+      "pseudocode": "1. Calculate ADX with period 14\n2. Calculate short SMA with period 3\n3. Calculate long SMA with period 6",
+      "input_params": [
+        {
+          "name": "dataframe",
+          "type": "DataFrame",
+          "description": "OHLCV price data",
+          "example": "pandas DataFrame with columns: open, high, low, close, volume"
+        },
+        {
+          "name": "metadata",
+          "type": "dict",
+          "description": "Strategy metadata including pair information",
+          "example": "{'pair': 'BTC/USDT'}"
+        }
+      ],
+      "output_description": "DataFrame with indicators: adx, short (SMA3), long (SMA6)",
+      "logic_explanation": "Simple setup using ADX to measure trend strength and fast/slow SMAs for entry/exit timing."
+    },
+    "populate_entry_trend": {
+      "implemented": true,
+      "description": "Generate long entry signals when short SMA crosses above long SMA with strong trend",
+      "pseudocode": "1. Check ADX > 25 (strong trend required)\n2. Check short SMA crosses above long SMA\n3. If both conditions true, set enter_long = 1",
+      "input_params": [
+        {
+          "name": "dataframe",
+          "type": "DataFrame",
+          "description": "OHLCV data with calculated indicators",
+          "example": "DataFrame with ADX and SMA indicators"
+        },
+        {
+          "name": "metadata",
+          "type": "dict",
+          "description": "Strategy metadata",
+          "example": "{'pair': 'BTC/USDT'}"
+        }
+      ],
+      "output_description": "DataFrame with enter_long column indicating entry signals (1 = enter, 0 = no action)",
+      "logic_explanation": "Enters long positions when fast SMA crosses above slow SMA, but only in strong trending markets (ADX > 25)."
+    },
+    "populate_exit_trend": {
+      "implemented": true,
+      "description": "Generate long exit signals when trend weakens and long SMA crosses above short SMA",
+      "pseudocode": "1. Check ADX < 25 (weak trend)\n2. Check long SMA crosses above short SMA\n3. If both conditions true, set exit_long = 1",
+      "input_params": [
+        {
+          "name": "dataframe",
+          "type": "DataFrame",
+          "description": "OHLCV data with calculated indicators",
+          "example": "DataFrame with ADX and SMA indicators"
+        },
+        {
+          "name": "metadata",
+          "type": "dict",
+          "description": "Strategy metadata",
+          "example": "{'pair': 'BTC/USDT'}"
+        }
+      ],
+      "output_description": "DataFrame with exit_long column indicating exit signals (1 = exit, 0 = no action)",
+      "logic_explanation": "Exits positions when trend strength weakens and the SMA crossover reverses, indicating potential trend change."
+    },
+    "populate_buy_trend": {
+      "implemented": false,
+      "description": "Legacy interface - replaced by populate_entry_trend",
+      "pseudocode": "",
+      "input_params": [],
+      "output_description": "Not implemented - uses new entry/exit interface",
+      "logic_explanation": "Strategy uses the newer Freqtrade v3 interface with entry/exit trend methods."
+    },
+    "populate_sell_trend": {
+      "implemented": false,
+      "description": "Legacy interface - replaced by populate_exit_trend",
+      "pseudocode": "",
+      "input_params": [],
+      "output_description": "Not implemented - uses new entry/exit interface",
+      "logic_explanation": "Strategy uses the newer Freqtrade v3 interface with entry/exit trend methods."
+    }
+  },
+  "indicators": [
+    {
+      "name": "ADX",
+      "parameters": {"timeperiod": 14},
+      "description": "Average Directional Index - measures trend strength"
+    },
+    {
+      "name": "SMA Short",
+      "parameters": {"timeperiod": 3},
+      "description": "Short Simple Moving Average for fast signals"
+    },
+    {
+      "name": "SMA Long",
+      "parameters": {"timeperiod": 6},
+      "description": "Long Simple Moving Average for trend confirmation"
+    }
+  ],
+  "parameters": {
+    "roi": {
+      "0": 0.1
+    },
+    "stoploss": -0.25,
+    "timeframe": "1h",
+    "startup_candle_count": 14
+  },
+  "buy_conditions": [
+    {
+      "description": "SMA crossover in strong trend (entry)",
+      "logic": "ADX > 25 AND short_SMA crosses above long_SMA",
+      "indicators_used": ["adx", "short", "long"]
+    }
+  ],
+  "sell_conditions": [
+    {
+      "description": "Trend weakness with SMA reversal (exit)",
+      "logic": "ADX < 25 AND long_SMA crosses above short_SMA",
+      "indicators_used": ["adx", "short", "long"]
+    }
+  ],
+  "risk_management": {
+    "stoploss_type": "fixed",
+    "trailing_stop": false,
+    "custom_stoploss": false,
+    "position_sizing": "default"
+  }
+}

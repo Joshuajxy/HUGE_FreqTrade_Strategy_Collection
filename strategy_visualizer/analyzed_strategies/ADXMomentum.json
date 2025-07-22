@@ -1,0 +1,142 @@
+{
+  "strategy_name": "ADXMomentum",
+  "description": "Classic ADX momentum strategy using directional movement indicators and momentum confirmation for trend following. Updated to use new Freqtrade v3 interface.",
+  "author": "Gert Wohlgemuth",
+  "version": "1.0",
+  "interfaces": {
+    "populate_indicators": {
+      "implemented": true,
+      "description": "Calculate ADX system indicators with momentum and SAR",
+      "pseudocode": "1. Calculate ADX with period 14\n2. Calculate Plus DI with period 25\n3. Calculate Minus DI with period 25\n4. Calculate Parabolic SAR\n5. Calculate Momentum with period 14",
+      "input_params": [
+        {
+          "name": "dataframe",
+          "type": "DataFrame",
+          "description": "OHLCV price data",
+          "example": "pandas DataFrame with columns: open, high, low, close, volume"
+        },
+        {
+          "name": "metadata",
+          "type": "dict",
+          "description": "Strategy metadata including pair information",
+          "example": "{'pair': 'BTC/USDT'}"
+        }
+      ],
+      "output_description": "DataFrame with ADX system indicators: adx, plus_di, minus_di, sar, mom",
+      "logic_explanation": "Implements the complete ADX system for trend analysis with momentum confirmation and SAR for trend following."
+    },
+    "populate_entry_trend": {
+      "implemented": true,
+      "description": "Generate long entry signals using ADX strength, momentum, and directional movement",
+      "pseudocode": "1. Check ADX > 25 (sufficient trend strength)\n2. Check momentum > 0 (positive momentum)\n3. Check Plus DI > 25 (strong bullish movement)\n4. Check Plus DI > Minus DI (bullish dominance)\n5. If all conditions true, set enter_long = 1",
+      "input_params": [
+        {
+          "name": "dataframe",
+          "type": "DataFrame",
+          "description": "OHLCV data with calculated indicators",
+          "example": "DataFrame with ADX indicators"
+        },
+        {
+          "name": "metadata",
+          "type": "dict",
+          "description": "Strategy metadata",
+          "example": "{'pair': 'BTC/USDT'}"
+        }
+      ],
+      "output_description": "DataFrame with enter_long column indicating entry signals (1 = enter, 0 = no action)",
+      "logic_explanation": "Identifies strong bullish trends with positive momentum and directional movement confirmation."
+    },
+    "populate_exit_trend": {
+      "implemented": true,
+      "description": "Generate long exit signals using ADX strength, momentum, and directional movement reversal",
+      "pseudocode": "1. Check ADX > 25 (sufficient trend strength)\n2. Check momentum < 0 (negative momentum)\n3. Check Minus DI > 25 (strong bearish movement)\n4. Check Plus DI < Minus DI (bearish dominance)\n5. If all conditions true, set exit_long = 1",
+      "input_params": [
+        {
+          "name": "dataframe",
+          "type": "DataFrame",
+          "description": "OHLCV data with calculated indicators",
+          "example": "DataFrame with ADX indicators"
+        },
+        {
+          "name": "metadata",
+          "type": "dict",
+          "description": "Strategy metadata",
+          "example": "{'pair': 'BTC/USDT'}"
+        }
+      ],
+      "output_description": "DataFrame with exit_long column indicating exit signals (1 = exit, 0 = no action)",
+      "logic_explanation": "Identifies trend reversal when momentum turns negative and directional movement favors bearish action."
+    },
+    "populate_buy_trend": {
+      "implemented": false,
+      "description": "Legacy interface - replaced by populate_entry_trend",
+      "pseudocode": "",
+      "input_params": [],
+      "output_description": "Not implemented - uses new entry/exit interface",
+      "logic_explanation": "Strategy uses the newer Freqtrade v3 interface with entry/exit trend methods."
+    },
+    "populate_sell_trend": {
+      "implemented": false,
+      "description": "Legacy interface - replaced by populate_exit_trend",
+      "pseudocode": "",
+      "input_params": [],
+      "output_description": "Not implemented - uses new entry/exit interface",
+      "logic_explanation": "Strategy uses the newer Freqtrade v3 interface with entry/exit trend methods."
+    }
+  },
+  "indicators": [
+    {
+      "name": "ADX",
+      "parameters": {"timeperiod": 14},
+      "description": "Average Directional Index - measures trend strength"
+    },
+    {
+      "name": "Plus DI",
+      "parameters": {"timeperiod": 25},
+      "description": "Plus Directional Indicator - measures upward price movement strength"
+    },
+    {
+      "name": "Minus DI",
+      "parameters": {"timeperiod": 25},
+      "description": "Minus Directional Indicator - measures downward price movement strength"
+    },
+    {
+      "name": "SAR",
+      "parameters": {},
+      "description": "Parabolic Stop and Reverse - trend following indicator"
+    },
+    {
+      "name": "Momentum",
+      "parameters": {"timeperiod": 14},
+      "description": "Price momentum indicator for trend confirmation"
+    }
+  ],
+  "parameters": {
+    "roi": {
+      "0": 0.01
+    },
+    "stoploss": -0.25,
+    "timeframe": "1h",
+    "startup_candle_count": 20
+  },
+  "buy_conditions": [
+    {
+      "description": "Strong bullish trend with positive momentum (entry)",
+      "logic": "ADX > 25 AND momentum > 0 AND Plus_DI > 25 AND Plus_DI > Minus_DI",
+      "indicators_used": ["adx", "mom", "plus_di", "minus_di"]
+    }
+  ],
+  "sell_conditions": [
+    {
+      "description": "Trend reversal with negative momentum (exit)",
+      "logic": "ADX > 25 AND momentum < 0 AND Minus_DI > 25 AND Plus_DI < Minus_DI",
+      "indicators_used": ["adx", "mom", "plus_di", "minus_di"]
+    }
+  ],
+  "risk_management": {
+    "stoploss_type": "fixed",
+    "trailing_stop": false,
+    "custom_stoploss": false,
+    "position_sizing": "default"
+  }
+}
