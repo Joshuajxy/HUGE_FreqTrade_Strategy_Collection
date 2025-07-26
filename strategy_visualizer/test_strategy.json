@@ -1,0 +1,99 @@
+{
+  "strategy_name": "TestZoomSyncStrategy",
+  "description": "测试滚轮缩放同步功能的策略",
+  "modules": [
+    {
+      "name": "DataLoader",
+      "type": "data_input",
+      "description": "数据加载模块",
+      "layer": 0,
+      "position": 0,
+      "parameters": {
+        "timeframe": "1h",
+        "lookback_period": 100
+      },
+      "indicators": ["close", "volume"],
+      "risk_level": "low"
+    },
+    {
+      "name": "TechnicalIndicators",
+      "type": "indicator",
+      "description": "技术指标计算",
+      "layer": 1,
+      "position": 0,
+      "parameters": {
+        "sma_period": 20,
+        "rsi_period": 14
+      },
+      "indicators": ["SMA", "RSI"],
+      "risk_level": "low"
+    },
+    {
+      "name": "SignalGenerator",
+      "type": "signal",
+      "description": "信号生成模块",
+      "layer": 2,
+      "position": 0,
+      "parameters": {
+        "buy_threshold": 30,
+        "sell_threshold": 70
+      },
+      "indicators": ["buy_signal", "sell_signal"],
+      "risk_level": "medium"
+    },
+    {
+      "name": "RiskManager",
+      "type": "risk_management",
+      "description": "风险管理模块",
+      "layer": 3,
+      "position": 0,
+      "parameters": {
+        "stop_loss": 0.02,
+        "take_profit": 0.04
+      },
+      "indicators": ["position_size", "risk_ratio"],
+      "risk_level": "high"
+    },
+    {
+      "name": "OrderExecutor",
+      "type": "execution",
+      "description": "订单执行模块",
+      "layer": 4,
+      "position": 0,
+      "parameters": {
+        "order_type": "market",
+        "slippage": 0.001
+      },
+      "indicators": ["order_status", "fill_price"],
+      "risk_level": "medium"
+    }
+  ],
+  "connections": [
+    {
+      "from": "DataLoader",
+      "to": "TechnicalIndicators",
+      "data_flow": "price_data"
+    },
+    {
+      "from": "TechnicalIndicators",
+      "to": "SignalGenerator",
+      "data_flow": "indicators"
+    },
+    {
+      "from": "SignalGenerator",
+      "to": "RiskManager",
+      "data_flow": "signals"
+    },
+    {
+      "from": "RiskManager",
+      "to": "OrderExecutor",
+      "data_flow": "risk_adjusted_signals"
+    }
+  ],
+  "metadata": {
+    "created_at": "2025-07-23T14:00:00Z",
+    "version": "1.0.0",
+    "complexity": "medium",
+    "total_modules": 5
+  }
+}

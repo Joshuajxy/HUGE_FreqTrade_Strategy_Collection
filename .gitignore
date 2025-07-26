@@ -28,34 +28,107 @@ ENV/
 strategy_visualizer_venv/
 json/
 strategy_html/
+node20/
 strategy_index.html
+
+# Node.js / Frontend
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+.pnpm-debug.log*
+
+# Frontend build outputs
+strategy_visualizer/streamlit_plugins/frontend/node_modules/
+strategy_visualizer/streamlit_plugins/frontend/build/
+strategy_visualizer/streamlit_plugins/frontend/dist/
+strategy_visualizer/streamlit_plugins/frontend/.cache/
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 
 # Streamlit
 .streamlit/secrets.toml
+.streamlit/config.toml
 
 # Temporary files
 temp/
+tmp/
 *.tmp
 *.log
+*.bak
+*.backup
 
 # OS
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
 
 # Jupyter Notebook
 .ipynb_checkpoints
+*.ipynb
 
 # pytest
 .pytest_cache/
+.cache/
 
 # Coverage
 htmlcov/
 .coverage
 .coverage.*
 coverage.xml
+*.cover
+.hypothesis/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Environments
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Compiled files
+*.com
+*.class
+*.dll
+*.exe
+*.o
+*.so
+
+# Archives
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*

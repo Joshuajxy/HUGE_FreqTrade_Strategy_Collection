@@ -1,7 +1,9 @@
 import streamlit as st
+# from streamlit_plugins.plotly_zoom_sync import plotly_zoom_sync  # 暂时禁用
 from .graph_builder import create_strategy_graph
 from .plotly_renderer import create_flowchart_figure, create_legend_info, get_plotly_config
-from .event_handler import handle_node_selection, get_selected_node
+from .event_handler import get_selected_node
+# from .event_handler import handle_node_selection  # 暂时未使用
 from utils.data_models import StrategyAnalysis
 
 def render_flowchart(strategy: StrategyAnalysis):
@@ -26,28 +28,40 @@ def render_flowchart(strategy: StrategyAnalysis):
         y_range=st.session_state.flowchart_yrange
     )
 
-    # 使用 streamlit-plotly-events 捕获 zoom/pan 事件
-    # ⚠️ streamlit-plotly-events 不支持 zoom/pan/relayout 事件，无法实现滚轮缩放实时同步
-    # 恢复 st.plotly_chart 用于缩放/平移，config 参数可用，但仅在刷新/按钮等事件后同步
-    chart_event = st.plotly_chart(
+    # 临时禁用自定义组件，使用标准 Plotly 图表确保正常显示
+    st.info("🖱️ **流程图显示**：使用鼠标滚轮缩放 | 拖拽平移 | 双击重置视图")
+    
+    # 使用标准 Plotly 图表显示
+    st.plotly_chart(
         fig,
-        use_container_width=True,
+        config=get_plotly_config(),
         key="strategy_flowchart",
-        config=get_plotly_config()
+        use_container_width=True
     )
+    
+    # 显示缩放说明（标准 Plotly 图表无法获取实时缩放状态）
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        st.metric("缩放功能", "内置支持")
+        st.caption("使用鼠标滚轮或工具栏")
+    with col2:
+        st.info("💡 **提示**：图表支持内置的缩放和平移功能，使用鼠标滚轮或右上角工具栏进行操作")
+        st.warning("⚠️ **注意**：当前使用标准图表，无法显示实时缩放比例。如需实时缩放同步，请等待自定义组件修复。")
+    
+    # 暂时禁用事件数据处理
+    event_data = None
 
-    # 监听缩放/平移事件，自动更新坐标轴范围（仅在 Streamlit 触发 rerun 时有效）
-    if hasattr(chart_event, 'relayoutData') and isinstance(chart_event.relayoutData, dict) and chart_event.relayoutData:
-        relayout = chart_event.relayoutData
+    # 监听缩放/平移事件，自动更新坐标轴范围（实时同步）
+    if event_data:
         updated = False
-        if 'xaxis.range[0]' in relayout and 'xaxis.range[1]' in relayout:
-            st.session_state.flowchart_xrange = [relayout['xaxis.range[0]'], relayout['xaxis.range[1]']]
+        if 'xaxis.range[0]' in event_data and 'xaxis.range[1]' in event_data:
+            st.session_state.flowchart_xrange = [event_data['xaxis.range[0]'], event_data['xaxis.range[1]']]
             updated = True
-        if 'yaxis.range[0]' in relayout and 'yaxis.range[1]' in relayout:
-            st.session_state.flowchart_yrange = [relayout['yaxis.range[0]'], relayout['yaxis.range[1]']]
+        if 'yaxis.range[0]' in event_data and 'yaxis.range[1]' in event_data:
+            st.session_state.flowchart_yrange = [event_data['yaxis.range[0]'], event_data['yaxis.range[1]']]
             updated = True
         if updated:
-            st.experimental_rerun()
+            st.rerun()
 
     # 显示图例
     render_flowchart_legend()
