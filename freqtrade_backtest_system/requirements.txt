@@ -1,0 +1,10 @@
+streamlit>=1.28.0
+streamlit-option-menu>=0.3.6
+pandas>=2.0.0
+numpy>=1.24.0
+plotly>=5.15.0
+freqtrade>=2023.8
+python-dateutil>=2.8.2
+pathlib2>=2.3.7
+psutil>=5.9.0
+openpyxl>=3.1.0
