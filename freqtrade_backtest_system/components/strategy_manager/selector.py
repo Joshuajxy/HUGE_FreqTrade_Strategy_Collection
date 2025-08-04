@@ -164,13 +164,15 @@ class StrategySelector:
         card_class = "strategy-card selected" if is_selected else "strategy-card"
         
         with st.container():
-            # Strategy selection checkbox
-            checkbox_key = f"strategy_{strategy.name}"
+            # Strategy selection checkbox - use file path hash for unique key
+            import hashlib
+            file_hash = hashlib.md5(str(strategy.file_path).encode()).hexdigest()[:8]
+            checkbox_key = f"strategy_{strategy.name}_{file_hash}"
             selected = st.checkbox(
                 f"**{strategy.name}**",
                 value=is_selected,
                 key=checkbox_key,
-                help=f"Select {strategy.name} for backtesting"
+                help=f"Select {strategy.name} for backtesting\nPath: {strategy.file_path}"
             )
             
             # Update session state

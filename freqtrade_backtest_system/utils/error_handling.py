@@ -1,6 +1,8 @@
 """
 Error handling and exception management module
 """
+import os
+import sys
 import streamlit as st
 import logging
 import traceback

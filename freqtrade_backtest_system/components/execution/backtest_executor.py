@@ -26,6 +26,7 @@ class BacktestExecutor:
         self.freqtrade_path = freqtrade_path
         self.temp_dir = Path("temp")
         self.temp_dir.mkdir(exist_ok=True)
+        self.freqtrade_available = False
         
         # Validate freqtrade availability
         self._validate_freqtrade()
@@ -42,16 +43,22 @@ class BacktestExecutor:
             
             if result.returncode == 0:
                 ErrorHandler.log_info(f"Freqtrade validation successful: {result.stdout.strip()}")
+                self.freqtrade_available = True
             else:
                 raise ExecutionError(f"Freqtrade validation failed: {result.stderr}")
         
         except FileNotFoundError:
-            raise ExecutionError(f"Freqtrade command not found: {self.freqtrade_path}")
+            self.freqtrade_available = False
+            ErrorHandler.log_warning(f"Freqtrade command not found: {self.freqtrade_path}")
+            ErrorHandler.log_info("To install freqtrade, run: pip install freqtrade")
+            raise ExecutionError(f"Freqtrade command not found: {self.freqtrade_path}\n💡 Install with: pip install freqtrade")
         
         except subprocess.TimeoutExpired:
+            self.freqtrade_available = False
             raise ExecutionError("Freqtrade command timeout")
         
         except Exception as e:
+            self.freqtrade_available = False
             raise ExecutionError(f"Freqtrade validation failed: {str(e)}")
     
     @error_handler(ExecutionError, show_error=False)

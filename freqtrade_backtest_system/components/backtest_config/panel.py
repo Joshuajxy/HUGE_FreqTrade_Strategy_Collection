@@ -1,5 +1,5 @@
 """
-Backtest configuration panel component
+Backtest configuration panel
 """
 import streamlit as st
 from datetime import datetime, date, timedelta

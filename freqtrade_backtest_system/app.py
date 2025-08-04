@@ -1,142 +1,468 @@
+"""
+Freqtrade Backtest System Main Application
+"""
 import streamlit as st
-from freqtrade_backtest_system.components.ui.main_layout import MainLayout
-from freqtrade_backtest_system.components.visualization.advanced_charts import AdvancedCharts
-from freqtrade_backtest_system.utils.data_models import BacktestResult, PerformanceMetrics, TradeRecord, BacktestConfig
-from datetime import datetime, date
+from pathlib import Path
+import sys
 import pandas as pd
 
-# Initialize layout
-main_layout = MainLayout()
-main_layout._setup_page_config()
-main_layout._load_custom_css()
+# Add project root to Python path
+project_root = Path(__file__).parent
+sys.path.insert(0, str(project_root))
+
+from components.ui.main_layout import MainLayout
+from components.strategy_manager.scanner import StrategyScanner
+from components.strategy_manager.selector import StrategySelector
+from components.backtest_config.panel import BacktestConfigPanel
+from components.backtest_config.manager import ConfigManager
+from components.execution.serializable_scheduler import SerializableExecutionScheduler
+from components.execution.backtest_executor import BacktestExecutor
+from components.setup.installation_guide import InstallationGuide
+from components.results.parser import ResultParser
+from components.results.comparator import ResultComparator
+from utils.error_handling import ErrorHandler
 
 def main():
-    main_layout.render_header()
-    selected_page = main_layout.render_navigation()
+    """Main application function"""
+    try:
+        # Initialize main layout
+        layout = MainLayout()
+        layout.render_header()
+        
+        # Render navigation menu
+        selected_page = layout.render_navigation()
+        
+        # Render sidebar info
+        layout.render_sidebar_info()
+        
+        # Render content based on selected page
+        if selected_page == "Strategy Management":
+            render_strategy_management()
+        elif selected_page == "Backtest Config":
+            render_backtest_config()
+        elif selected_page == "Execution Monitor":
+            render_execution_monitor()
+        elif selected_page == "Results Analysis":
+            render_results_analysis()
+        elif selected_page == "Jupyter Analysis":
+            render_jupyter_analysis()
+        elif selected_page == "Performance Monitor":
+            render_performance_monitor()
+        elif selected_page == "Installation Guide":
+            render_installation_guide()
+        
+        # Render footer
+        layout.render_footer()
+            
+    except Exception as e:
+        ErrorHandler.handle_application_error(e)
 
-    from freqtrade_backtest_system.components.strategy_manager.scanner import StrategyScanner
-    scanner = StrategyScanner()
-    available_strategies = scanner.scan_strategies()
-
-    if selected_page == "Strategy Management":
-        st.title("Strategy Management")
-        st.write("This will be the strategy selection and management interface.")
-        # Placeholder for StrategySelector
-        # from freqtrade_backtest_system.components.strategy_manager.selector import StrategySelector
-        # selector = StrategySelector()
-        # selected_strategies = selector.render_strategy_selection(available_strategies)
-
-    elif selected_page == "Backtest Configuration":
-        st.title("Backtest Configuration")
-        st.write("This will be the backtest parameter configuration interface.")
-        # Placeholder for BacktestConfigPanel
-        # from freqtrade_backtest_system.components.backtest_config.panel import BacktestConfigPanel
-        # config_panel = BacktestConfigPanel()
-        # config = config_panel.render_config_panel()
-
-    elif selected_page == "Execution Monitoring":
-        st.title("Execution Monitoring")
-        st.write("This will be the real-time monitoring interface for backtesting and Dry Run.")
-
-        from freqtrade_backtest_system.components.execution.dry_run_executor import DryRunExecutor
-        from freqtrade_backtest_system.components.ui.dry_run_monitor_panel import DryRunMonitorPanel
-
-        # Initialize DryRunExecutor in session state to maintain its state
-        if 'dry_run_executor' not in st.session_state:
-            st.session_state.dry_run_executor = DryRunExecutor()
-
-        dry_run_executor = st.session_state.dry_run_executor
-        dry_run_monitor_panel = DryRunMonitorPanel()
-
-        # Get active dry runs
-        active_dry_runs = dry_run_executor.get_active_dry_runs()
-        dry_run_monitor_panel.render_dry_run_monitor(active_dry_runs)
-
-        # Handle stop dry run request from the monitor panel
-        if "stop_dry_run_id" in st.session_state and st.session_state["stop_dry_run_id"]:
-            run_id_to_stop = st.session_state.pop("stop_dry_run_id")
-            if dry_run_executor.stop_dry_run(run_id_to_stop):
-                st.success(f"Dry Run {run_id_to_stop} stopped.")
-            else:
-                st.error(f"Failed to stop Dry Run {run_id_to_stop}.")
-            st.rerun() # Rerun to update the UI after stopping
-
-    elif selected_page == "Results Analysis":
-        st.title("Results Analysis")
-        st.write("This section will display detailed analysis and visualization charts of backtest results.")
-
-        # Dummy data for demonstration
-        dummy_config = BacktestConfig(
-            start_date=date(2023, 1, 1),
-            end_date=date(2023, 1, 31),
-            timeframe="1h",
-            pairs=["BTC/USDT"],
-            initial_balance=1000,
-            max_open_trades=3
+def render_strategy_management():
+    """Render strategy management page"""
+    st.header("📋 Strategy Management")
+    
+    # Initialize components
+    scanner = StrategyScanner([".."])  # Scan parent directory
+    selector = StrategySelector()
+    
+    # Scan control panel
+    st.subheader("🔍 Strategy Scanner")
+    
+    col1, col2, col3 = st.columns([2, 1, 1])
+    
+    with col1:
+        scan_path = st.text_input(
+            "Scan Path", 
+            value="..", 
+            help="Directory path containing strategy files"
         )
+    
+    with col2:
+        if st.button("🔍 Start Scan", type="primary", use_container_width=True):
+            st.session_state.trigger_scan = True
+            st.session_state.scan_path = scan_path
+    
+    with col3:
+        if st.button("🗑️ Clear Results", use_container_width=True):
+            if 'strategies' in st.session_state:
+                del st.session_state.strategies
+            if 'selected_strategies' in st.session_state:
+                del st.session_state.selected_strategies
+            st.rerun()
+    
+    # Execute scan
+    if st.session_state.get('trigger_scan', False):
+        st.session_state.trigger_scan = False
+        
+        with st.spinner("Scanning strategy files..."):
+            try:
+                # Update scan path
+                scanner = StrategyScanner([st.session_state.get('scan_path', '..')])
+                strategies = scanner.scan_strategies()
+                st.session_state.strategies = strategies
+                
+                if strategies:
+                    st.success(f"✅ Scan completed! Found {len(strategies)} strategy files")
+                else:
+                    st.warning("⚠️ No strategy files found, please check scan path")
+            except Exception as e:
+                st.error(f"❌ Scan failed: {str(e)}")
+    
+    # Display scan results
+    strategies = st.session_state.get('strategies', [])
+    
+    if strategies:
+        st.divider()
+        
+        # Render strategy selection interface
+        selected_strategies = selector.render_strategy_selection(strategies)
+        
+        # Save selected strategies to session state
+        st.session_state.selected_strategies = selected_strategies
+        
+        if selected_strategies:
+            st.success(f"✅ Selected {len(selected_strategies)} strategies, you can proceed to backtest configuration")
+    else:
+        st.info("Please click 'Start Scan' button to find strategy files")
 
-        dummy_trades_1 = [
-            TradeRecord(pair="BTC/USDT", side="buy", timestamp=datetime(2023, 1, 5, 10, 0), price=20000, amount=0.01, profit=50, reason="entry"),
-            TradeRecord(pair="BTC/USDT", side="sell", timestamp=datetime(2023, 1, 7, 15, 0), price=20500, amount=0.01, profit=50, reason="exit"),
-            TradeRecord(pair="BTC/USDT", side="buy", timestamp=datetime(2023, 1, 10, 9, 0), price=21000, amount=0.01, profit=-20, reason="entry"),
-            TradeRecord(pair="BTC/USDT", side="sell", timestamp=datetime(2023, 1, 12, 11, 0), price=20800, amount=0.01, profit=-20, reason="exit"),
-            TradeRecord(pair="BTC/USDT", side="buy", timestamp=datetime(2023, 1, 15, 14, 0), price=22000, amount=0.01, profit=100, reason="entry"),
-            TradeRecord(pair="BTC/USDT", side="sell", timestamp=datetime(2023, 1, 17, 16, 0), price=23000, amount=0.01, profit=100, reason="exit"),
-        ]
-        dummy_metrics_1 = PerformanceMetrics(total_return=130, total_return_pct=13, win_rate=66.67, max_drawdown=20, sharpe_ratio=0.8)
-        dummy_result_1 = BacktestResult(strategy_name="StrategyA", config=dummy_config, metrics=dummy_metrics_1, trades=dummy_trades_1, timestamp=datetime.now())
+def render_backtest_config():
+    """Render backtest configuration page"""
+    st.header("⚙️ Backtest Configuration")
+    
+    # Check if strategies are selected
+    selected_strategies = st.session_state.get('selected_strategies', [])
+    if not selected_strategies:
+        st.warning("Please select strategies in Strategy Management page first")
+        return
+    
+    st.info(f"Current selected strategies: {', '.join(selected_strategies)}")
+    
+    # Initialize components
+    config_panel = BacktestConfigPanel()
+    config_manager = ConfigManager()
+    
+    # Configuration management
+    st.subheader("📁 Configuration Management")
+    tab1, tab2 = st.tabs(["New Configuration", "Load Configuration"])
+    
+    with tab1:
+        # Render configuration panel
+        config = config_panel.render_config_panel()
+        
+        if config:
+            # Save configuration option
+            config_manager.render_save_config_dialog(config)
+            
+            # Save config to session state
+            st.session_state.backtest_config = config
+            
+            # Estimate execution time
+            estimated_time = config_panel.get_estimated_execution_time(config, len(selected_strategies))
+            st.info(f"Estimated execution time: {estimated_time}")
+            
+            if st.button("🚀 Start Backtest", type="primary", use_container_width=True):
+                st.session_state.start_backtest = True
+                st.success("Backtest configuration saved, please go to Execution Monitor page to view progress")
+    
+    with tab2:
+        # Load saved configuration
+        loaded_config = config_manager.render_config_manager()
+        if loaded_config:
+            st.session_state.backtest_config = loaded_config
 
-        dummy_trades_2 = [
-            TradeRecord(pair="BTC/USDT", side="buy", timestamp=datetime(2023, 1, 6, 11, 0), price=20100, amount=0.01, profit=30, reason="entry"),
-            TradeRecord(pair="BTC/USDT", side="sell", timestamp=datetime(2023, 1, 8, 16, 0), price=20400, amount=0.01, profit=30, reason="exit"),
-            TradeRecord(pair="BTC/USDT", side="buy", timestamp=datetime(2023, 1, 11, 10, 0), price=21100, amount=0.01, profit=80, reason="entry"),
-            TradeRecord(pair="BTC/USDT", side="sell", timestamp=datetime(2023, 1, 13, 12, 0), price=21900, amount=0.01, profit=80, reason="exit"),
-        ]
-        dummy_metrics_2 = PerformanceMetrics(total_return=110, total_return_pct=11, win_rate=100, max_drawdown=0, sharpe_ratio=1.2)
-        dummy_result_2 = BacktestResult(strategy_name="StrategyB", config=dummy_config, metrics=dummy_metrics_2, trades=dummy_trades_2, timestamp=datetime.now())
+def render_execution_monitor():
+    """Render execution monitor page"""
+    st.header("🔄 Execution Monitor")
+    
+    # Check if there's a pending backtest
+    if st.session_state.get('start_backtest', False):
+        selected_strategies = st.session_state.get('selected_strategies', [])
+        config = st.session_state.get('backtest_config')
+        
+        if selected_strategies and config:
+            # Initialize serializable scheduler
+            if 'scheduler' not in st.session_state:
+                st.session_state.scheduler = SerializableExecutionScheduler(max_workers=4)
+            
+            scheduler = st.session_state.scheduler
+            
+            # Initialize executor (not stored in session state)
+            try:
+                executor = BacktestExecutor()
+            except Exception as e:
+                st.error(f"❌ 无法初始化Freqtrade执行器: {str(e)}")
+                st.warning("这通常是因为freqtrade命令未找到或配置不正确")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("📖 查看安装指南"):
+                        st.session_state.show_installation_guide = True
+                        st.rerun()
+                
+                with col2:
+                    if st.button("🔧 运行系统检查"):
+                        st.session_state.run_system_check = True
+                        st.rerun()
+                
+                return
+            
+            # Start backtest execution
+            if 'task_ids' not in st.session_state:
+                with st.spinner("Starting backtest tasks..."):
+                    # Submit tasks to scheduler
+                    task_ids = scheduler.execute_backtest_batch(selected_strategies, config)
+                    st.session_state.task_ids = task_ids
+                    st.session_state.start_backtest = False
+                    
+                    # Start background execution (simulated for now)
+                    st.info("📝 Tasks submitted to scheduler. In a full implementation, background workers would process these tasks.")
+            
+            # Display execution status
+            task_ids = st.session_state.get('task_ids', {})
+            if task_ids:
+                render_execution_status(scheduler, task_ids)
+        else:
+            st.error("Missing backtest configuration or strategy selection")
+    else:
+        st.info("Please configure and start backtest in Backtest Config page first")
 
-        results_to_display = [dummy_result_1, dummy_result_2]
+def render_execution_status(scheduler, task_ids):
+    """Render execution status"""
+    # Get execution statistics
+    stats = scheduler.get_execution_statistics()
+    
+    # Display statistics
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Tasks", stats['total_tasks'])
+    with col2:
+        st.metric("Running", stats['running_tasks'])
+    with col3:
+        st.metric("Completed", stats['completed_tasks'])
+    with col4:
+        st.metric("Failed", stats['failed_tasks'])
+    
+    # Display progress bar
+    if stats['total_tasks'] > 0:
+        progress = stats['completed_tasks'] / stats['total_tasks']
+        st.progress(progress, text=f"Overall progress: {progress:.1%}")
+    
+    # Display task status
+    st.subheader("Task Status")
+    status_dict = scheduler.get_execution_status()
+    
+    for strategy, task_id in task_ids.items():
+        status = status_dict.get(task_id, "unknown")
+        
+        col1, col2, col3 = st.columns([2, 1, 1])
+        with col1:
+            st.write(f"**{strategy}**")
+        with col2:
+            if status.value == "running":
+                st.write("🔄 Running")
+            elif status.value == "completed":
+                st.write("✅ Completed")
+            elif status.value == "failed":
+                st.write("❌ Failed")
+            else:
+                st.write("⏳ Waiting")
+        with col3:
+            if st.button("Cancel", key=f"cancel_{task_id}"):
+                scheduler.cancel_task(task_id)
+                st.rerun()
+    
+    # Check if all tasks completed
+    if stats['completed_tasks'] + stats['failed_tasks'] == stats['total_tasks']:
+        st.success("All backtest tasks completed!")
+        
+        # Collect results
+        results = []
+        for strategy, task_id in task_ids.items():
+            result = scheduler.get_task_result(task_id)
+            if result and hasattr(result, 'is_successful') and result.is_successful():
+                results.append(result)
+        
+        if results:
+            st.session_state.backtest_results = results
+            st.info("Backtest results are ready, please go to Results Analysis page")
+        
+        # Clean up tasks
+        if st.button("Clear Completed Tasks"):
+            scheduler.clear_completed_tasks()
+            if 'task_ids' in st.session_state:
+                del st.session_state.task_ids
+            st.rerun()
 
-        advanced_charts = AdvancedCharts()
+def render_results_analysis():
+    """Render results analysis page"""
+    st.header("📊 Results Analysis")
+    
+    # Check if there are backtest results
+    results = st.session_state.get('backtest_results', [])
+    if not results:
+        st.info("No backtest results available, please run backtest first")
+        return
+    
+    st.success(f"Found {len(results)} strategy backtest results")
+    
+    # Create tabs for different analysis views
+    tab1, tab2, tab3 = st.tabs(["📈 Performance Analysis", "🔗 Visualizer Integration", "📋 Strategy Details"])
+    
+    with tab1:
+        render_performance_analysis(results)
+    
+    with tab2:
+        render_visualizer_integration(results)
+    
+    with tab3:
+        render_strategy_details_tab(results)
 
-        st.subheader("Cumulative Equity Curve")
-        equity_curve_fig = advanced_charts.create_equity_curve(results_to_display)
-        st.plotly_chart(equity_curve_fig, use_container_width=True)
+def render_performance_analysis(results):
+    """Render performance analysis tab"""
+    # Initialize comparator
+    comparator = ResultComparator()
+    
+    # Strategy comparison
+    if len(results) >= 2:
+        st.subheader("📈 Strategy Comparison")
+        
+        with st.spinner("Analyzing strategy performance..."):
+            comparison = comparator.compare_strategies(results)
+        
+        # Display best strategy
+        st.success(f"🏆 Best Strategy: **{comparison.best_strategy}**")
+        
+        # Display rankings
+        st.subheader("🏅 Strategy Rankings")
+        ranking_data = []
+        for strategy, rank in sorted(comparison.rankings.items(), key=lambda x: x[1]):
+            ranking_data.append({"Rank": rank, "Strategy": strategy})
+        
+        st.table(pd.DataFrame(ranking_data))
+        
+        # Display performance matrix
+        st.subheader("📋 Performance Matrix")
+        matrix = comparator.create_performance_matrix(results)
+        if not matrix.empty:
+            st.dataframe(matrix, use_container_width=True)
+        
+        # Risk-return analysis
+        st.subheader("⚖️ Risk-Return Analysis")
+        risk_analysis = comparator.analyze_risk_return(results)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write("**High Return Low Risk Strategies:**")
+            for strategy in risk_analysis['high_return_low_risk']:
+                st.write(f"✅ {strategy}")
+        
+        with col2:
+            st.write("**High Risk High Return Strategies:**")
+            for strategy in risk_analysis['high_return_high_risk']:
+                st.write(f"⚠️ {strategy}")
 
-        st.subheader("Drawdown Plot (StrategyA)")
-        drawdown_fig_a = advanced_charts.create_drawdown_plot(dummy_result_1)
-        st.plotly_chart(drawdown_fig_a, use_container_width=True)
+def render_visualizer_integration(results):
+    """Render visualizer integration tab"""
+    from components.integration.visualizer_bridge import VisualizerIntegrationPanel
+    
+    # Get strategies from session state
+    strategies = st.session_state.get('strategies', [])
+    
+    # Initialize and render integration panel
+    integration_panel = VisualizerIntegrationPanel()
+    integration_panel.render(strategies, results)
 
-        st.subheader("Drawdown Plot (StrategyB)")
-        drawdown_fig_b = advanced_charts.create_drawdown_plot(dummy_result_2)
-        st.plotly_chart(drawdown_fig_b, use_container_width=True)
+def render_strategy_details_tab(results):
+    """Render strategy details tab"""
+    st.subheader("📋 Strategy Details")
+    selected_strategy = st.selectbox(
+        "Select strategy to view details",
+        [result.strategy_name for result in results]
+    )
+    
+    if selected_strategy:
+        selected_result = next(r for r in results if r.strategy_name == selected_strategy)
+        render_strategy_details(selected_result)
 
-        st.subheader("Trade Signal Markers (StrategyA)")
-        # For trade markers, we need OHLCV data. Using dummy data for now.
-        dummy_ohlcv = pd.DataFrame({
-            'date': pd.to_datetime([datetime(2023, 1, 1), datetime(2023, 1, 5), datetime(2023, 1, 7), datetime(2023, 1, 10), datetime(2023, 1, 12), datetime(2023, 1, 15), datetime(2023, 1, 17), datetime(2023, 1, 20)]),
-            'open': [20000, 20100, 20400, 20900, 20700, 21500, 22500, 22800],
-            'high': [20200, 20300, 20600, 21200, 20900, 22200, 23200, 23500],
-            'low': [19800, 19900, 20200, 20700, 20500, 21300, 22300, 22600],
-            'close': [20100, 20200, 20500, 21000, 20800, 22000, 23000, 23300]
-        })
-        trade_markers_fig_a = advanced_charts.create_trade_markers_chart(dummy_result_1, dummy_ohlcv)
-        st.plotly_chart(trade_markers_fig_a, use_container_width=True)
+def render_strategy_details(result):
+    """Render strategy details"""
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Total Return %", f"{result.metrics.total_return_pct:.2f}%")
+        st.metric("Win Rate %", f"{result.metrics.win_rate:.2f}%")
+    
+    with col2:
+        st.metric("Max Drawdown %", f"{result.metrics.max_drawdown_pct:.2f}%")
+        st.metric("Sharpe Ratio", f"{result.metrics.sharpe_ratio:.3f}")
+    
+    with col3:
+        st.metric("Total Trades", result.metrics.total_trades)
+        st.metric("Avg Profit", f"{result.metrics.avg_profit:.2f}")
+    
+    # Display configuration info
+    with st.expander("📋 Backtest Configuration"):
+        st.write(f"**Time Range:** {result.config.start_date} to {result.config.end_date}")
+        st.write(f"**Timeframe:** {result.config.timeframe}")
+        st.write(f"**Trading Pairs:** {', '.join(result.config.pairs)}")
+        st.write(f"**Initial Balance:** {result.config.initial_balance:,.2f} USDT")
 
+def render_jupyter_analysis():
+    """Render Jupyter analysis page"""
+    st.header("📊 Jupyter Analysis")
+    
+    try:
+        from components.jupyter_integration.jupyter_panel import JupyterAnalysisPanel
+        
+        # Initialize Jupyter panel
+        jupyter_panel = JupyterAnalysisPanel()
+        
+        # Get backtest results
+        results = st.session_state.get('backtest_results', [])
+        
+        # Render Jupyter analysis panel
+        jupyter_panel.render(results)
+        
+    except ImportError as e:
+        st.warning("⚠️ Jupyter integration is not fully available")
+        st.info("Some Jupyter features may be limited due to missing dependencies")
+        
+        # Show basic info about available results
+        results = st.session_state.get('backtest_results', [])
+        if results:
+            st.success(f"Found {len(results)} strategy results available for analysis")
+            
+            # Simple results display
+            for result in results:
+                with st.expander(f"📊 {result.strategy_name}"):
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Total Return", f"{result.metrics.total_return_pct:.2f}%")
+                    with col2:
+                        st.metric("Win Rate", f"{result.metrics.win_rate:.2f}%")
+                    with col3:
+                        st.metric("Max Drawdown", f"{result.metrics.max_drawdown_pct:.2f}%")
+        else:
+            st.info("No backtest results available. Please run a backtest first.")
+    
+    except Exception as e:
+        st.error(f"Error loading Jupyter analysis: {str(e)}")
+        st.info("Please check the system logs for more details")
 
-    elif selected_page == "Jupyter分析":
-        st.title("Jupyter Notebook 深度分析")
-        st.write("这里将是Jupyter Notebook集成界面。")
-        # Placeholder for JupyterPanel
-        # from freqtrade_backtest_system.components.jupyter_integration.jupyter_panel import JupyterPanel
-        # jupyter_panel = JupyterPanel()
-        # jupyter_panel.render_jupyter_panel(backtest_results)
+def render_performance_monitor():
+    """Render performance monitoring page"""
+    from components.optimization.performance_panel import PerformanceMonitoringPanel
+    
+    # Initialize performance panel
+    performance_panel = PerformanceMonitoringPanel()
+    
+    # Render performance monitoring panel
+    performance_panel.render()
 
-    elif selected_page == "超参数优化":
-        st.title("超参数优化")
-        from freqtrade_backtest_system.components.ui.hyperopt_panel import HyperoptPanel
-        hyperopt_panel = HyperoptPanel()
-        hyperopt_panel.render_hyperopt_panel(available_strategies)
+def render_installation_guide():
+    """Render installation guide page"""
+    guide = InstallationGuide()
+    guide.render_installation_guide()
 
 if __name__ == "__main__":
     main()
