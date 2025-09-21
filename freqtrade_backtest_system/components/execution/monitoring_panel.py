@@ -79,6 +79,9 @@ class ExecutionMonitoringPanel:
             st.session_state.task_logs = {}
         
         self._render_execution_status(scheduler, task_ids)
+        
+        # Check for completed tasks and update session state
+        self._update_session_state_with_results(scheduler, task_ids)
 
         if auto_refresh:
             time.sleep(5)
@@ -106,6 +109,28 @@ class ExecutionMonitoringPanel:
         except Exception as e:
             st.error(f"Error updating execution status: {str(e)}")
             ErrorHandler.log_error(f"Execution status update error: {str(e)}")
+
+    def _update_session_state_with_results(self, scheduler, task_ids: Dict[str, str]):
+        """Update session state with completed task results"""
+        try:
+            # Import TaskStatus here to avoid undefined name error
+            from .serializable_scheduler import TaskStatus
+            
+            # Initialize backtest_results in session state if not exists
+            if 'backtest_results' not in st.session_state:
+                st.session_state.backtest_results = []
+            
+            # Check for completed tasks and add their results to session state
+            for strategy_name, task_id in task_ids.items():
+                task_info = scheduler.get_task_info(task_id)
+                if task_info and task_info.status == TaskStatus.COMPLETED and task_info.result:
+                    # Avoid duplicates by checking strategy name
+                    existing_names = {res.strategy_name for res in st.session_state.backtest_results}
+                    if task_info.result.strategy_name not in existing_names:
+                        st.session_state.backtest_results.append(task_info.result)
+                        ErrorHandler.log_info(f"Added result for {task_info.result.strategy_name} to session state")
+        except Exception as e:
+            ErrorHandler.log_error(f"Error updating session state with results: {str(e)}")
     
     def _render_statistics_cards(self, stats: Dict[str, Any]):
         """Render statistics cards"""

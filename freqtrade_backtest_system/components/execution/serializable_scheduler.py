@@ -84,19 +84,13 @@ class SerializableScheduler:
 
     def _task_done_callback(self, task_id: str):
         def callback(future):
-            import streamlit as st
             try:
                 result = future.result()
                 self.update_task_status(task_id, TaskStatus.COMPLETED, result=result)
                 
-                # Add the successful result to the main results list for the analysis page
-                if 'backtest_results' not in st.session_state:
-                    st.session_state.backtest_results = []
-                
-                # Avoid duplicates by checking strategy name
-                existing_names = {res.strategy_name for res in st.session_state.backtest_results}
-                if result and hasattr(result, 'strategy_name') and result.strategy_name not in existing_names:
-                    st.session_state.backtest_results.append(result)
+                # Store result in task info for retrieval by monitoring panel
+                if task_id in self.tasks:
+                    self.tasks[task_id].result = result
 
             except Exception as e:
                 self.update_task_status(task_id, TaskStatus.FAILED, error_message=str(e))
