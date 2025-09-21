@@ -665,7 +665,7 @@ class DataExporter:
                 })
             
             df = pd.DataFrame(history_data)
-            st.dataframe(df, use_container_width=True)
+            st.dataframe(df, width='stretch')
             
             # Cleanup option
             if st.button("🧹 Clean Old Exports (30+ days)"):

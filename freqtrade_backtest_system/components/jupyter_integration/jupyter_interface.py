@@ -1,3 +1,4 @@
+
 """
 Jupyter interface integration for the backtest system
 """
@@ -318,7 +319,7 @@ class JupyterInterface:
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            if st.button("📊 Generate Summary Report", use_container_width=True):
+            if st.button("📊 Generate Summary Report", width='stretch'):
                 with st.spinner("Generating summary report..."):
                     execution_id = self.notebook_executor.generate_automated_report(
                         results, "comprehensive"
@@ -330,7 +331,7 @@ class JupyterInterface:
                         st.error("Failed to start report generation")
         
         with col2:
-            if st.button("📈 Strategy Comparison", use_container_width=True):
+            if st.button("📈 Strategy Comparison", width='stretch'):
                 if len(results) >= 2:
                     with st.spinner("Generating comparison analysis..."):
                         execution_id = self.notebook_executor.generate_automated_report(
@@ -345,7 +346,7 @@ class JupyterInterface:
                     st.warning("Need at least 2 strategies for comparison")
         
         with col3:
-            if st.button("⚠️ Risk Analysis", use_container_width=True):
+            if st.button("⚠️ Risk Analysis", width='stretch'):
                 with st.spinner("Generating risk analysis..."):
                     execution_id = self.notebook_executor.generate_automated_report(
                         results, "risk"
@@ -379,7 +380,7 @@ class JupyterInterface:
             
             import pandas as pd
             df = pd.DataFrame(history_data)
-            st.dataframe(df, use_container_width=True)
+            st.dataframe(df, width='stretch')
         else:
             st.info("No export history available")
         
@@ -472,15 +473,15 @@ class JupyterInterface:
                                 "strategy_names = [r.strategy_name for r in results]\n",
                                 "returns = [r.metrics.total_return_pct for r in results]\n",
                                 "\n",
-                                "fig = go.Figure(data=[\n",
-                                "    go.Bar(x=strategy_names, y=returns)\n",
-                                "])\n",
+                                "fig = go.Figure(data=[",
+                                "    go.Bar(x=strategy_names, y=returns)"
+                                "])",
                                 "\n",
-                                "fig.update_layout(\n",
-                                "    title=\"Strategy Performance Comparison\",\n",
-                                "    xaxis_title=\"Strategy\",\n",
-                                "    yaxis_title=\"Total Return (%)\"\n",
-                                ")\n",
+                                "fig.update_layout(",
+                                "    title=\"Strategy Performance Comparison\",",
+                                "    xaxis_title=\"Strategy\",",
+                                "    yaxis_title=\"Total Return (%)\"
+                                ")",
                                 "\n",
                                 "fig.show()"
                             ]

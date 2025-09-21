@@ -93,17 +93,21 @@ class ExecutionScheduler:
         task_name = task_name or f"task_{task_id[:8]}"
         
         try:
+            # Record task start time
+            start_time = datetime.now()
+            
             # Submit task to executor
             future = self.executor.submit(task_func, *args, **kwargs)
             
-            # Store task information
+            # Store task information with enhanced metadata
             self.tasks[task_id] = future
             self.task_status[task_id] = ExecutionStatus.RUNNING
             self.task_metadata[task_id] = {
                 'name': task_name,
-                'start_time': datetime.now(),
-                'args': args,
-                'kwargs': kwargs
+                'start_time': start_time,
+                'submit_time': datetime.now(),
+                'args_count': len(args),
+                'kwargs_count': len(kwargs)
             }
             
             ErrorHandler.log_info(f"Task submitted: {task_name} (ID: {task_id})")

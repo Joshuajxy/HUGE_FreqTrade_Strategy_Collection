@@ -1,5 +1,5 @@
 """
-Backtest configuration panel component
+Backtest configuration panel
 """
 import streamlit as st
 from datetime import datetime, date, timedelta
@@ -134,6 +134,13 @@ class BacktestConfigPanel:
                     step=100.0,
                     help="Virtual funds for dry run mode"
                 )
+
+                exit_pricing = st.selectbox(
+                    "Exit Pricing",
+                    ["ask", "bid", "same", "other"],
+                    index=0,
+                    help="Price side to use for exit orders"
+                )
         
         return {
             'start_date': start_date,
@@ -144,7 +151,8 @@ class BacktestConfigPanel:
             'max_open_trades': max_open_trades,
             'stake_amount': stake_amount,
             'fee': fee,
-            'dry_run_wallet': dry_run_wallet
+            'dry_run_wallet': dry_run_wallet,
+            'exit_pricing': exit_pricing
         }
     
     def _render_advanced_config(self) -> Dict[str, Any]:

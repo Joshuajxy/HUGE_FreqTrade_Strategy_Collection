@@ -424,41 +424,88 @@ class ChartComponents:
             st.info("No results available for visualization")
             return
         
+        # Import advanced charts
+        try:
+            from .advanced_charts import AdvancedCharts
+            advanced_charts = AdvancedCharts()
+            has_advanced_charts = True
+        except ImportError:
+            has_advanced_charts = False
+            st.warning("Advanced charts not available")
+        
         # Chart selection
+        chart_options = [
+            "Return Comparison",
+            "Performance Radar",
+            "Risk-Return Scatter",
+            "Drawdown Comparison",
+            "Metrics Table"
+        ]
+        
+        # Add advanced chart options if available
+        if has_advanced_charts:
+            chart_options.extend([
+                "Equity Curve",
+                "Performance Comparison",
+                "OHLCV with Trades (Sample)"
+            ])
+        
         chart_type = st.selectbox(
             "Select Chart Type",
-            [
-                "Return Comparison",
-                "Performance Radar",
-                "Risk-Return Scatter",
-                "Drawdown Comparison",
-                "Metrics Table"
-            ]
+            chart_options
         )
         
         # Render selected chart
         if chart_type == "Return Comparison":
             fig = self.create_return_comparison_chart(results)
-            st.plotly_chart(fig, use_container_width=True, config=self.chart_config)
+            st.plotly_chart(fig, width='stretch', config=self.chart_config)
         
         elif chart_type == "Performance Radar":
             fig = self.create_performance_radar_chart(results)
-            st.plotly_chart(fig, use_container_width=True, config=self.chart_config)
+            st.plotly_chart(fig, width='stretch', config=self.chart_config)
         
         elif chart_type == "Risk-Return Scatter":
             fig = self.create_risk_return_scatter(results)
-            st.plotly_chart(fig, use_container_width=True, config=self.chart_config)
+            st.plotly_chart(fig, width='stretch', config=self.chart_config)
         
         elif chart_type == "Drawdown Comparison":
             fig = self.create_drawdown_comparison_chart(results)
-            st.plotly_chart(fig, use_container_width=True, config=self.chart_config)
+            st.plotly_chart(fig, width='stretch', config=self.chart_config)
         
         elif chart_type == "Metrics Table":
             df = self.create_metrics_comparison_table(results)
             if not df.empty:
-                st.dataframe(df, use_container_width=True)
+                st.dataframe(df, width='stretch')
             else:
                 st.info("No data available for table")
+        
+        # Advanced charts
+        elif chart_type == "Equity Curve" and has_advanced_charts:
+            fig = advanced_charts.create_equity_curve(results)
+            st.plotly_chart(fig, width='stretch', config=self.chart_config)
+        
+        elif chart_type == "Performance Comparison" and has_advanced_charts:
+            fig = advanced_charts.create_performance_comparison_chart(results)
+            st.plotly_chart(fig, width='stretch', config=self.chart_config)
+        
+        elif chart_type == "OHLCV with Trades (Sample)" and has_advanced_charts:
+            # Create sample OHLCV data for demonstration
+            dates = pd.date_range(start='2023-01-01', periods=100, freq='D')
+            sample_ohlcv = pd.DataFrame({
+                'date': dates,
+                'open': np.random.uniform(100, 110, 100),
+                'high': np.random.uniform(110, 120, 100),
+                'low': np.random.uniform(90, 100, 100),
+                'close': np.random.uniform(100, 110, 100),
+                'volume': np.random.uniform(1000, 5000, 100)
+            })
+            
+            # Use first result for demonstration
+            if results:
+                fig = advanced_charts.create_ohlcv_chart_with_trades(sample_ohlcv, results[0].trades)
+                st.plotly_chart(fig, width='stretch', config=self.chart_config)
+            else:
+                st.info("No results available for OHLCV chart")
         
         # Individual strategy analysis
         if len(results) > 1:
@@ -480,7 +527,7 @@ class ChartComponents:
                 with col1:
                     # Trade distribution
                     fig = self.create_trade_distribution_chart(selected_result)
-                    st.plotly_chart(fig, use_container_width=True, config=self.chart_config)
+                    st.plotly_chart(fig, width='stretch', config=self.chart_config)
                 
                 with col2:
                     # Strategy metrics

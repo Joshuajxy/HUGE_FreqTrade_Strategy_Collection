@@ -3,8 +3,12 @@
 System test script
 """
 import sys
+import os
 from pathlib import Path
 from datetime import date, timedelta
+
+# Set UTF-8 encoding
+os.environ['PYTHONIOENCODING'] = 'utf-8'
 
 # Add project root to Python path
 project_root = Path(__file__).parent
@@ -153,7 +157,11 @@ def test_execution_scheduler():
 
 def main():
     """Main test function"""
-    print("🚀 Starting system tests...")
+    # Set UTF-8 encoding for Windows
+    if sys.platform == "win32":
+        os.system("chcp 65001 > nul")
+    
+    print("Starting system tests...")
     print("=" * 50)
     
     tests = [
@@ -172,17 +180,17 @@ def main():
             if test():
                 passed += 1
         except Exception as e:
-            print(f"❌ Test exception: {e}")
+            print(f"Test exception: {e}")
         print()
     
     print("=" * 50)
-    print(f"📊 Test results: {passed}/{total} passed")
+    print(f"Test results: {passed}/{total} passed")
     
     if passed == total:
-        print("🎉 All tests passed! System is ready to run")
+        print("All tests passed! System is ready to run")
         return True
     else:
-        print("⚠️  Some tests failed, please check related components")
+        print("Some tests failed, please check related components")
         return False
 
 if __name__ == "__main__":

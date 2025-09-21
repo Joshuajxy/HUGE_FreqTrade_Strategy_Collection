@@ -1,7 +1,7 @@
 import subprocess
 from pathlib import Path
 from typing import Dict, Any, Optional
-from freqtrade_backtest_system.utils.data_models import BacktestConfig
+from utils.data_models import BacktestConfig
 from utils.error_handling import ErrorHandler, ExecutionError, DataError
 
 class HyperoptExecutor:

@@ -2,6 +2,7 @@
 Backtest executor
 """
 import subprocess
+import sys
 import json
 import tempfile
 import time
@@ -26,6 +27,12 @@ class BacktestExecutor:
         self.freqtrade_path = freqtrade_path
         self.temp_dir = Path("temp")
         self.temp_dir.mkdir(exist_ok=True)
+        self.user_data_dir = Path("user_data")
+        self.user_data_dir.mkdir(exist_ok=True)
+        (self.user_data_dir / "data").mkdir(exist_ok=True)
+        (self.user_data_dir / "strategies").mkdir(exist_ok=True)
+        (self.user_data_dir / "plot").mkdir(exist_ok=True)
+        self.freqtrade_available = False
         
         # Validate freqtrade availability
         self._validate_freqtrade()
@@ -34,7 +41,7 @@ class BacktestExecutor:
         """Validate freqtrade availability"""
         try:
             result = subprocess.run(
-                [self.freqtrade_path, "--version"],
+                [sys.executable, "-m", "freqtrade", "--version"],
                 capture_output=True,
                 text=True,
                 timeout=10
@@ -42,40 +49,104 @@ class BacktestExecutor:
             
             if result.returncode == 0:
                 ErrorHandler.log_info(f"Freqtrade validation successful: {result.stdout.strip()}")
+                self.freqtrade_available = True
             else:
                 raise ExecutionError(f"Freqtrade validation failed: {result.stderr}")
         
         except FileNotFoundError:
-            raise ExecutionError(f"Freqtrade command not found: {self.freqtrade_path}")
+            self.freqtrade_available = False
+            ErrorHandler.log_warning(f"Freqtrade command not found: {self.freqtrade_path}")
+            ErrorHandler.log_info("To install freqtrade, run: pip install freqtrade")
+            raise ExecutionError(f"Freqtrade command not found: {self.freqtrade_path}\n💡 Install with: pip install freqtrade")
         
         except subprocess.TimeoutExpired:
+            self.freqtrade_available = False
             raise ExecutionError("Freqtrade command timeout")
         
         except Exception as e:
+            self.freqtrade_available = False
             raise ExecutionError(f"Freqtrade validation failed: {str(e)}")
     
-    @error_handler(ExecutionError, show_error=False)
-    def execute_backtest(self, strategy_name: str, config: BacktestConfig) -> BacktestResult:
+    def _ensure_data_downloaded(self, config: BacktestConfig):
         """
-        Execute backtest
+        Ensure historical data for the given configuration is available, downloading it if necessary.
+        """
+        ErrorHandler.log_info("Ensuring historical data is available...")
+        print("\n📥 Ensuring historical data is available...")
+        try:
+            cmd = [
+                sys.executable, "-m", "freqtrade",
+                "download-data",
+                "--exchange", "binance",  # Assuming binance, could be from config
+                "-t", config.timeframe,
+                "--pairs", *config.pairs,
+                "--timerange", f"{config.start_date.strftime('%Y%m%d')}-{config.end_date.strftime('%Y%m%d')}"
+            ]
+            
+            ErrorHandler.log_info(f"Executing data download command: {' '.join(cmd)}")
+            print(f"🔩 Executing command: {' '.join(cmd)}")
+
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, universal_newlines=True)
+            
+            for line in iter(process.stdout.readline, ''):
+                line = line.strip()
+                if line:
+                    print(f"   {line}")
+                    ErrorHandler.log_info(f"DATA_DOWNLOAD: {line}")
+            
+            process.wait()
+            
+            if process.returncode != 0:
+                raise subprocess.CalledProcessError(process.returncode, cmd, "Data download script failed.")
+
+            print("✅ Data download check completed successfully.")
+            ErrorHandler.log_info("Successfully ensured data is available for backtest.")
+            return True
+        except subprocess.CalledProcessError as e:
+            error_msg = f"Data download failed with return code {e.returncode}."
+            print(f"❌ {error_msg}")
+            ErrorHandler.log_error(error_msg)
+            raise ExecutionError(error_msg) from e
+        except Exception as e:
+            error_msg = f"An unknown error occurred during data download: {e}"
+            print(f"❌ {error_msg}")
+            ErrorHandler.log_error(error_msg)
+            raise ExecutionError(error_msg) from e
+
+    @error_handler(ExecutionError, show_error=False)
+    def execute_backtest(self, strategy_info: "StrategyInfo", config: BacktestConfig) -> BacktestResult:
+        """
+        Execute backtest with detailed logging, ensuring data is downloaded first.
         
         Args:
-            strategy_name: strategy name
+            strategy_info: strategy information object
             config: backtest configuration
             
         Returns:
             backtest result
         """
+        from utils.data_models import StrategyInfo # For type hint
         start_time = time.time()
+        strategy_name = strategy_info.name
         
         try:
+            # Step 1: Ensure data is downloaded
+            self._ensure_data_downloaded(config)
+
+            # Step 2: Proceed with backtest execution
+            print(f"\n🏁 STARTING BACKTEST EXECUTION: {strategy_name}")
             ErrorHandler.log_info(f"Starting backtest execution: {strategy_name}")
+
+            # Log configuration details
+            config_info = f"Backtest config - Timeframe: {config.timeframe}, Pairs: {len(config.pairs)}, Start: {config.start_date}, End: {config.end_date}"
+            print(f"📊 CONFIG: {config_info}")
+            ErrorHandler.log_info(config_info)
             
             # Create temporary configuration file
             config_file = self._create_temp_config(strategy_name, config)
             
             # Execute freqtrade backtest
-            output = self._run_freqtrade_backtest(config_file)
+            output = self._run_freqtrade_backtest_with_logging(strategy_info, config_file)
             
             # Parse results
             parser = ResultParser()
@@ -84,12 +155,15 @@ class BacktestExecutor:
             # Set execution time
             result.execution_time = time.time() - start_time
             result.status = ExecutionStatus.COMPLETED
-            
-            ErrorHandler.log_info(f"Backtest execution completed: {strategy_name}")
+
+            success_msg = f"Backtest execution completed: {strategy_name} (Time: {result.execution_time:.2f}s, Return: {result.metrics.total_return_pct:.2f}%)"
+            print(f"✅ {success_msg}")
+            ErrorHandler.log_info(success_msg)
             return result
         
         except Exception as e:
-            ErrorHandler.log_error(f"Backtest execution failed: {strategy_name} - {str(e)}")
+            # The error (including from data download) is caught here
+            ErrorHandler.log_error(f"Backtest execution failed for {strategy_name}: {str(e)}")
             
             # Create error result
             error_result = BacktestResult(
@@ -112,18 +186,28 @@ class BacktestExecutor:
     def _create_temp_config(self, strategy_name: str, config: BacktestConfig) -> Path:
         """Create temporary configuration file"""
         try:
-            # Convert to freqtrade configuration format
-            freqtrade_config = config.to_freqtrade_config(strategy_name)
+            # Convert to freqtrade configuration format and add modern pairlist handling
+            base_config = config.to_freqtrade_config(strategy_name)
+            
+            # The 'pairs' key is now handled within 'pairlists'
+            pairs = base_config.pop("pairs", [])
+
+            freqtrade_config = {
+                "pairlists": [
+                    {"method": "StaticPairList", "pairs": pairs}
+                ],
+                **base_config
+            }
             
             # Add additional required configurations
             freqtrade_config.update({
-                "datadir": "user_data/data",
-                "user_data_dir": "user_data",
+                "datadir": str(self.user_data_dir / "data"),
+                "user_data_dir": str(self.user_data_dir),
                 "logfile": f"logs/freqtrade_{strategy_name}.log",
                 "db_url": f"sqlite:///tradesv3_{strategy_name}.sqlite",
-                "strategy_path": ["user_data/strategies"],
+                # strategy_path is now handled by the command line argument
                 "export": "trades",
-                "exportfilename": f"backtest_results_{strategy_name}.json"
+                "exportfilename": f"user_data/backtest_results/backtest_results_{strategy_name}.json"
             })
             
             # Create temporary configuration file
@@ -138,53 +222,196 @@ class BacktestExecutor:
         except Exception as e:
             raise ExecutionError(f"Failed to create temporary configuration: {str(e)}")
     
-    def _run_freqtrade_backtest(self, config_file: Path) -> str:
-        """Run freqtrade backtest command"""
+    def _run_freqtrade_backtest_with_logging(self, strategy_info: "StrategyInfo", config_file: Path) -> str:
+        """Run freqtrade backtest command with detailed logging"""
+        from utils.data_models import StrategyInfo # For type hint
+        strategy_name = strategy_info.name
+        strategy_path = strategy_info.file_path.parent
+
         try:
             # Build command
             cmd = [
-                self.freqtrade_path,
+                sys.executable, "-m", "freqtrade",
                 "backtesting",
                 "--config", str(config_file),
-                "--strategy-list", "all",
-                "--timerange", "20230101-20231231",  # This will be overridden by config
-                "--export", "trades",
-                "--export-filename", f"backtest_results_{int(time.time())}.json"
+                "--strategy-path", str(strategy_path),
+                "--export", "trades"
             ]
-            
-            ErrorHandler.log_info(f"Executing command: {' '.join(cmd)}")
-            
-            # Execute command
-            result = subprocess.run(
+
+            ErrorHandler.log_info(f"Executing freqtrade command: {' '.join(cmd)}")
+
+            # Print detailed command information for real execution
+            if self.freqtrade_path != "mock_freqtrade":
+                print(f"\n🔥 REAL FREQTRADE EXECUTION:")
+                print(f"📝 Command: {' '.join(cmd)}")
+                print(f"🎯 Strategy: {strategy_name}")
+                print(f"📂 Strategy Path: {strategy_path}")
+                print(f"⚙️ Config: {config_file}")
+                print(f"🔧 Freqtrade path: {sys.executable} -m freqtrade")
+                print("=" * 80)
+
+            # Execute command with real-time logging
+            process = subprocess.Popen(
                 cmd,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                timeout=300,  # 5 minutes timeout
+                bufsize=1,
+                universal_newlines=True,
                 cwd=Path.cwd()
             )
-            
-            if result.returncode == 0:
-                ErrorHandler.log_info("Freqtrade backtest execution successful")
-                return result.stdout
+
+            # Capture output with real-time logging
+            stdout_lines = []
+            stderr_lines = []
+
+            # Use select to handle real-time output properly
+            import select
+
+            # Set up polling for both stdout and stderr
+            if hasattr(select, 'select') and sys.platform != 'win32':  # Unix-like systems only
+                while True:
+                    # Wait for data on either stdout or stderr
+                    reads = [process.stdout, process.stderr]
+                    readable, _, _ = select.select(reads, [], [], 0.1)
+
+                    for stream in readable:
+                        if stream == process.stdout:
+                            line = process.stdout.readline()
+                            if line:
+                                line = line.strip()
+                                if line:  # Only print non-empty lines
+                                    print(f"📄 FREQTRADE STDOUT: {line}")
+                                stdout_lines.append(line)
+                        elif stream == process.stderr:
+                            line = process.stderr.readline()
+                            if line:
+                                line = line.strip()
+                                if line:  # Only print non-empty lines
+                                    print(f"⚠️  FREQTRADE STDERR: {line}")
+                                stderr_lines.append(line)
+
+                    # Check if process has finished
+                    if process.poll() is not None:
+                        # Read any remaining output
+                        remaining_stdout, remaining_stderr = process.communicate()
+                        if remaining_stdout:
+                            for line in remaining_stdout.split('\n'):
+                                if line.strip():
+                                    print(f"📄 FREQTRADE STDOUT: {line.strip()}")
+                                    stdout_lines.append(line.strip())
+                        if remaining_stderr:
+                            for line in remaining_stderr.split('\n'):
+                                if line.strip():
+                                    print(f"⚠️  FREQTRADE STDERR: {line.strip()}")
+                                    stderr_lines.append(line.strip())
+                        break
             else:
-                error_msg = f"Freqtrade backtest failed: {result.stderr}"
+                # Windows fallback - simpler approach
+                print("🔄 Reading freqtrade output (Windows mode)...")
+                import threading
+                import queue
+
+                # Use queues to handle output
+                stdout_queue = queue.Queue()
+                stderr_queue = queue.Queue()
+
+                def read_stdout():
+                    try:
+                        for line in iter(process.stdout.readline, ''):
+                            line = line.strip()
+                            if line:
+                                stdout_queue.put(line)
+                    except:
+                        pass
+
+                def read_stderr():
+                    try:
+                        for line in iter(process.stderr.readline, ''):
+                            line = line.strip()
+                            if line:
+                                stderr_queue.put(line)
+                    except:
+                        pass
+
+                # Start reader threads
+                stdout_thread = threading.Thread(target=read_stdout, daemon=True)
+                stderr_thread = threading.Thread(target=read_stderr, daemon=True)
+                stdout_thread.start()
+                stderr_thread.start()
+
+                # Read from queues and display
+                while True:
+                    # Read available lines from queues
+                    while not stdout_queue.empty():
+                        line = stdout_queue.get_nowait()
+                        print(f"📄 FREQTRADE STDOUT: {line}")
+                        stdout_lines.append(line)
+
+                    while not stderr_queue.empty():
+                        line = stderr_queue.get_nowait()
+                        print(f"⚠️  FREQTRADE STDERR: {line}")
+                        stderr_lines.append(line)
+
+                    # Check if process has finished
+                    if process.poll() is not None:
+                        # Wait a bit for remaining output
+                        time.sleep(0.1)
+
+                        # Read any remaining output
+                        remaining_stdout, remaining_stderr = process.communicate()
+                        if remaining_stdout:
+                            for line in remaining_stdout.split('\n'):
+                                if line.strip():
+                                    print(f"📄 FREQTRADE STDOUT: {line.strip()}")
+                                    stdout_lines.append(line.strip())
+                        if remaining_stderr:
+                            for line in remaining_stderr.split('\n'):
+                                if line.strip():
+                                    print(f"⚠️  FREQTRADE STDERR: {line.strip()}")
+                                    stderr_lines.append(line.strip())
+
+                        # Read any remaining queue items
+                        while not stdout_queue.empty():
+                            line = stdout_queue.get_nowait()
+                            print(f"📄 FREQTRADE STDOUT: {line}")
+                            stdout_lines.append(line)
+
+                        while not stderr_queue.empty():
+                            line = stderr_queue.get_nowait()
+                            print(f"⚠️  FREQTRADE STDERR: {line}")
+                            stderr_lines.append(line)
+
+                        break
+
+                    # Small delay to prevent busy waiting
+                    time.sleep(0.05)
+
+            # Check return code
+            if process.returncode == 0:
+                ErrorHandler.log_info(f"Freqtrade backtest execution successful: {strategy_name}")
+                print(f"✅ FREQTRADE EXECUTION COMPLETED SUCCESSFULLY")
+                return '\n'.join(stdout_lines)
+            else:
+                error_msg = f"Freqtrade backtest failed: {strategy_name} - {''.join(stderr_lines)}"
                 ErrorHandler.log_error(error_msg)
+                print(f"❌ FREQTRADE EXECUTION FAILED (Return code: {process.returncode})")
                 raise ExecutionError(error_msg)
-        
+
         except subprocess.TimeoutExpired:
             raise ExecutionError("Backtest execution timeout")
-        
+
         except Exception as e:
             raise ExecutionError(f"Failed to run freqtrade backtest: {str(e)}")
     
     def _cleanup_temp_files(self):
         """Clean up temporary files"""
         try:
-            # Clean up temporary configuration files
-            for temp_file in self.temp_dir.glob("config_*.json"):
-                if temp_file.exists():
-                    temp_file.unlink()
-            
+            # NOTE: Do not delete temporary configuration files here to allow
+            # subsequent subprocess-based validations to reuse the same config.
+            # The test harness relies on the config file after execute_backtest().
+            # If needed, a separate maintenance job can clean old files.
+
             # Clean up temporary result files
             for result_file in Path.cwd().glob("backtest_results_*.json"):
                 if result_file.exists():
@@ -226,11 +453,21 @@ class BacktestExecutor:
             
             # Build dry run command
             cmd = [
-                self.freqtrade_path,
+                sys.executable, "-m", "freqtrade",
                 "trade",
                 "--config", str(config_file),
                 "--strategy", strategy_name
             ]
+            
+            # Print detailed command information for real execution
+            if self.freqtrade_path != "mock_freqtrade":
+                print(f"\n🚀 REAL DRY RUN EXECUTION:")
+                print(f"📝 Command: {' '.join(cmd)}")
+                print(f"🎯 Strategy: {strategy_name}")
+                print(f"📂 Config: {config_file}")
+                print(f"🗄️  Database: dryrun_{strategy_name}.sqlite")
+                print(f"🔧 Freqtrade path: {self.freqtrade_path}")
+                print("=" * 80)
             
             # Start dry run process (non-blocking)
             process = subprocess.Popen(

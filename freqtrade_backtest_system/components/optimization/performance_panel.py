@@ -156,7 +156,7 @@ class PerformanceMonitoringPanel:
                 height=300
             )
             
-            st.plotly_chart(fig_memory, use_container_width=True)
+            st.plotly_chart(fig_memory, width='stretch')
         
         with col2:
             # Process memory info
@@ -223,7 +223,7 @@ class PerformanceMonitoringPanel:
                     title="系统性能实时监控"
                 )
                 
-                st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
     
     def _render_performance_optimization(self):
         """Render performance optimization tab"""
@@ -348,7 +348,7 @@ class PerformanceMonitoringPanel:
                 height=300
             )
             
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
         
         # Cache management actions
         st.write("### 🔧 缓存操作")
@@ -516,7 +516,7 @@ class PerformanceMonitoringPanel:
                 title=f"过去 {hours_back} 小时性能趋势"
             )
             
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
             
             # Performance analysis insights
             st.write("### 🔍 性能分析洞察")

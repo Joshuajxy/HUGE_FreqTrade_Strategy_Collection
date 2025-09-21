@@ -2,7 +2,14 @@
 Main interface layout component
 """
 import streamlit as st
-from streamlit_option_menu import option_menu
+
+# Try to import streamlit_option_menu, fallback to selectbox if not available
+try:
+    from streamlit_option_menu import option_menu
+    HAS_OPTION_MENU = True
+except ImportError:
+    HAS_OPTION_MENU = False
+    HAS_OPTION_MENU = False
 
 class MainLayout:
     """Main interface layout manager"""
@@ -192,25 +199,33 @@ class MainLayout:
     
     def render_navigation(self) -> str:
         """Render navigation menu"""
-        selected = option_menu(
-            menu_title=None,
-            options=["Strategy Management", "Backtest Configuration", "Execution Monitoring", "Results Analysis", "Jupyter Analysis", "Hyperparameter Optimization"],
-            icons=["folder", "gear", "play-circle", "bar-chart", "journal-code", "speedometer2"],
-            menu_icon="cast",
-            default_index=0,
-            orientation="horizontal",
-            styles={
-                "container": {"padding": "0!important", "background-color": "#fafafa"},
-                "icon": {"color": "#1f77b4", "font-size": "18px"},
-                "nav-link": {
-                    "font-size": "16px",
-                    "text-align": "center",
-                    "margin": "0px",
-                    "--hover-color": "#eee"
-                },
-                "nav-link-selected": {"background-color": "#1f77b4"},
-            }
-        )
+        if HAS_OPTION_MENU:
+            selected = option_menu(
+                menu_title=None,
+                options=["Strategy Management", "Backtest Config", "Execution Monitor", "Results Analysis", "Jupyter Analysis", "Performance Monitor"],
+                icons=["folder", "gear", "play-circle", "bar-chart", "journal-code", "speedometer2"],
+                menu_icon="cast",
+                default_index=0,
+                orientation="horizontal",
+                styles={
+                    "container": {"padding": "0!important", "background-color": "#fafafa"},
+                    "icon": {"color": "#1f77b4", "font-size": "18px"},
+                    "nav-link": {
+                        "font-size": "16px",
+                        "text-align": "center",
+                        "margin": "0px",
+                        "--hover-color": "#eee"
+                    },
+                    "nav-link-selected": {"background-color": "#1f77b4"},
+                }
+            )
+        else:
+            # Fallback to regular selectbox
+            selected = st.selectbox(
+                "选择页面",
+                ["Strategy Management", "Backtest Config", "Execution Monitor", "Results Analysis", "Jupyter Analysis", "Performance Monitor"],
+                index=0
+            )
         return selected
     
     def render_sidebar_info(self):
@@ -227,10 +242,10 @@ class MainLayout:
             
             st.markdown("### 🔧 Quick Actions")
             
-            if st.button("🔄 Refresh Data", use_container_width=True):
+            if st.button("🔄 Refresh Data", width='stretch'):
                 st.rerun()
             
-            if st.button("📋 View Logs", use_container_width=True):
+            if st.button("📋 View Logs", width='stretch'):
                 self._show_logs()
             
             st.markdown("### 📚 Help Information")

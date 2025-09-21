@@ -14,17 +14,67 @@ import threading
 
 from utils.data_models import BacktestResult
 from utils.error_handling import ErrorHandler, error_handler
-from .template_manager import JupyterTemplateManager
-from .report_generator import ReportGenerator
-from .lab_integration import JupyterLabIntegration
+
+# Handle optional imports with fallbacks
+try:
+    from .template_manager import JupyterTemplateManager
+except ImportError:
+    JupyterTemplateManager = None
+    ErrorHandler.log_warning("JupyterTemplateManager not available, using fallback")
+
+try:
+    from .report_generator import ReportGenerator
+except ImportError:
+    class ReportGenerator:
+        def __init__(self, *args, **kwargs):
+            pass
+        def generate_strategy_report(self, *args, **kwargs):
+            return None
+        def generate_comparison_report(self, *args, **kwargs):
+            return None
+        def generate_risk_report(self, *args, **kwargs):
+            return None
+        def generate_trade_report(self, *args, **kwargs):
+            return None
+        def generate_custom_report(self, *args, **kwargs):
+            return None
+        def get_generated_reports(self, *args, **kwargs):
+            return []
+        def delete_report(self, *args, **kwargs):
+            return False
+        def cleanup_old_reports(self, *args, **kwargs):
+            return 0
+    ErrorHandler.log_warning("ReportGenerator not available, using fallback")
+
+try:
+    from .lab_integration import JupyterLabIntegration
+except ImportError:
+    class JupyterLabIntegration:
+        def __init__(self, *args, **kwargs):
+            self.port = 8888
+            self.work_dir = Path(".")
+        def is_running(self):
+            return False
+        def start_jupyter_lab(self, *args, **kwargs):
+            return False
+        def stop_jupyter_lab(self):
+            return False
+        def export_data_to_workspace(self, *args, **kwargs):
+            return {}
+    ErrorHandler.log_warning("JupyterLabIntegration not available, using fallback")
 
 class JupyterAnalysisPanel:
     """Jupyter analysis panel for Streamlit interface"""
     
     def __init__(self):
         """Initialize Jupyter analysis panel"""
-        self.template_manager = JupyterTemplateManager()
-        self.report_generator = ReportGenerator(self.template_manager)
+        # Initialize components with proper fallback handling
+        if JupyterTemplateManager is not None:
+            self.template_manager = JupyterTemplateManager()
+        else:
+            self.template_manager = None
+            
+        self.report_generator = ReportGenerator(self.template_manager if self.template_manager else None)
         self.lab_integration = JupyterLabIntegration()
         
         # Initialize session state
@@ -399,7 +449,7 @@ class JupyterAnalysisPanel:
                 'size_mb': '大小(MB)',
                 'created': '创建时间'
             },
-            use_container_width=True
+            width='stretch'
         )
         
         # Report actions

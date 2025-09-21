@@ -8,6 +8,7 @@ from pathlib import Path
 from utils.data_models import StrategyInfo
 from utils.error_handling import ErrorHandler
 
+
 class StrategySelector:
     """Strategy selection interface"""
     
@@ -17,7 +18,7 @@ class StrategySelector:
         self.search_term = ""
         self.filter_criteria = {}
     
-    def render_strategy_selection(self, strategies: List[StrategyInfo]) -> List[str]:
+    def render_strategy_selection(self, strategies: List[StrategyInfo]) -> List[StrategyInfo]:
         """
         Render strategy selection interface
         
@@ -25,25 +26,31 @@ class StrategySelector:
             strategies: list of strategy information
             
         Returns:
-            list of selected strategy names
+            list of selected StrategyInfo objects
         """
         if not strategies:
             st.info("No strategies found. Please scan for strategy files first.")
             return []
         
+        # Create a quick lookup map
+        strategy_map = {s.name: s for s in strategies}
+
         # Search and filter controls
         self._render_search_controls(strategies)
         
         # Filter strategies based on search and filters
         filtered_strategies = self._filter_strategies(strategies)
         
-        # Strategy selection interface
-        selected_strategies = self._render_strategy_cards(filtered_strategies)
+        # Strategy selection interface (returns list of names)
+        selected_strategy_names = self._render_strategy_table(filtered_strategies)
         
         # Selection summary
-        self._render_selection_summary(selected_strategies, len(strategies))
+        self._render_selection_summary(selected_strategy_names, len(strategies))
         
-        return selected_strategies
+        # Convert selected names back to StrategyInfo objects
+        selected_strategy_objects = [strategy_map[name] for name in selected_strategy_names if name in strategy_map]
+
+        return selected_strategy_objects
     
     def _render_search_controls(self, strategies: List[StrategyInfo]):
         """Render search and filter controls"""
@@ -116,99 +123,116 @@ class StrategySelector:
         
         return filtered
     
-    def _render_strategy_cards(self, strategies: List[StrategyInfo]) -> List[str]:
-        """Render strategy cards with selection"""
+    def _render_strategy_table(self, strategies: List[StrategyInfo]) -> List[str]:
+        """Render strategy selection as a table with checkboxes"""
         if not strategies:
             st.warning("No strategies match your search criteria.")
             return []
-        
-        # Batch selection controls
-        col1, col2, col3 = st.columns([1, 1, 2])
-        
-        with col1:
-            if st.button("✅ Select All", use_container_width=True):
-                st.session_state.selected_strategies = [s.name for s in strategies]
-                st.rerun()
-        
-        with col2:
-            if st.button("❌ Clear All", use_container_width=True):
-                st.session_state.selected_strategies = []
-                st.rerun()
         
         # Initialize session state for selected strategies
         if 'selected_strategies' not in st.session_state:
             st.session_state.selected_strategies = []
         
-        # Render strategy cards
-        selected_strategies = []
+        # Batch selection controls
+        col1, col2, col3 = st.columns([1, 1, 2])
         
-        # Use columns for better layout
-        cols_per_row = 2
-        for i in range(0, len(strategies), cols_per_row):
-            cols = st.columns(cols_per_row)
+        with col1:
+            if st.button("✅ Select All", width='stretch'):
+                st.session_state.selected_strategies = [s.name for s in strategies]
+                st.rerun()
+        
+        with col2:
+            if st.button("❌ Clear All", width='stretch'):
+                st.session_state.selected_strategies = []
+                st.rerun()
+        
+        # Prepare table data
+        table_data = []
+        for strategy in strategies:
+            try:
+                file_size = strategy.file_path.stat().st_size
+                formatted_size = self._format_file_size(file_size)
+            except:
+                formatted_size = "N/A"
             
-            for j, strategy in enumerate(strategies[i:i+cols_per_row]):
-                with cols[j]:
-                    is_selected = self._render_strategy_card(strategy)
-                    if is_selected:
-                        selected_strategies.append(strategy.name)
+            # Check if strategy is selected
+            is_selected = strategy.name in st.session_state.selected_strategies
+            
+            row = {
+                "Select": is_selected,
+                "Strategy Name": strategy.name,
+                "File Name": strategy.file_path.name,
+                "Author": strategy.author or "Unknown",
+                "Version": strategy.version or "N/A",
+                "Modified": strategy.last_modified.strftime('%Y-%m-%d %H:%M') if strategy.last_modified else "N/A",
+                "Size": formatted_size,
+                "Description": (strategy.description or "")[:50] + "..." if strategy.description and len(strategy.description) > 50 else strategy.description or ""
+            }
+            table_data.append(row)
+        
+        # Create DataFrame for the table
+        import pandas as pd
+        df = pd.DataFrame(table_data)
+        
+        # Display the table with selection
+        st.subheader("Strategy Selection Table")
+        
+        # Display editable table
+        edited_df = st.data_editor(
+            df,
+            column_config={
+                "Select": st.column_config.CheckboxColumn(
+                    "Select",
+                    help="Select strategies for backtesting",
+                    default=False,
+                ),
+                "Strategy Name": st.column_config.TextColumn(
+                    "Strategy Name",
+                    help="Name of the strategy",
+                ),
+                "File Name": st.column_config.TextColumn(
+                    "File Name",
+                    help="Strategy file name",
+                ),
+                "Author": st.column_config.TextColumn(
+                    "Author",
+                    help="Strategy author",
+                ),
+                "Version": st.column_config.TextColumn(
+                    "Version",
+                    help="Strategy version",
+                ),
+                "Modified": st.column_config.TextColumn(
+                    "Modified",
+                    help="Last modification date",
+                ),
+                "Size": st.column_config.TextColumn(
+                    "Size",
+                    help="File size",
+                ),
+                "Description": st.column_config.TextColumn(
+                    "Description",
+                    help="Strategy description",
+                    width="medium",
+                )
+            },
+            disabled=["Strategy Name", "File Name", "Author", "Version", "Modified", "Size", "Description"],
+            hide_index=True,
+            width='stretch',
+            height=600,
+        )
+        
+        # Update session state based on selections
+        selected_strategies = [
+            row["Strategy Name"] for _, row in edited_df.iterrows() if row["Select"]
+        ]
+        
+        st.session_state.selected_strategies = selected_strategies
+        
+        # Show selection summary
+        st.success(f"✅ Selected {len(selected_strategies)} out of {len(strategies)} strategies")
         
         return selected_strategies
-    
-    def _render_strategy_card(self, strategy: StrategyInfo) -> bool:
-        """Render individual strategy card"""
-        # Check if strategy is selected
-        is_selected = strategy.name in st.session_state.selected_strategies
-        
-        # Card container with custom styling
-        card_class = "strategy-card selected" if is_selected else "strategy-card"
-        
-        with st.container():
-            # Strategy selection checkbox
-            checkbox_key = f"strategy_{strategy.name}"
-            selected = st.checkbox(
-                f"**{strategy.name}**",
-                value=is_selected,
-                key=checkbox_key,
-                help=f"Select {strategy.name} for backtesting"
-            )
-            
-            # Update session state
-            if selected and strategy.name not in st.session_state.selected_strategies:
-                st.session_state.selected_strategies.append(strategy.name)
-            elif not selected and strategy.name in st.session_state.selected_strategies:
-                st.session_state.selected_strategies.remove(strategy.name)
-            
-            # Strategy information
-            with st.expander("📋 Details", expanded=False):
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.write(f"**File:** {strategy.file_path.name}")
-                    if strategy.author:
-                        st.write(f"**Author:** {strategy.author}")
-                    if strategy.version:
-                        st.write(f"**Version:** {strategy.version}")
-                
-                with col2:
-                    if strategy.last_modified:
-                        st.write(f"**Modified:** {strategy.last_modified.strftime('%Y-%m-%d %H:%M')}")
-                    
-                    # File size
-                    try:
-                        file_size = strategy.file_path.stat().st_size
-                        st.write(f"**Size:** {self._format_file_size(file_size)}")
-                    except:
-                        pass
-                
-                # Description
-                if strategy.description:
-                    st.write(f"**Description:** {strategy.description}")
-                
-                # File path
-                st.code(str(strategy.file_path), language=None)
-        
-        return selected
     
     def _format_file_size(self, size_bytes: int) -> str:
         """Format file size in human readable format"""
@@ -300,7 +324,7 @@ class StrategySelector:
             },
             disabled=["Name", "Author", "Version", "Modified", "File", "Description"],
             hide_index=True,
-            use_container_width=True
+            width='stretch'
         )
         
         # Get selected strategies

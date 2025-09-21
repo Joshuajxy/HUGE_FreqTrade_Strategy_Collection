@@ -1,6 +1,8 @@
 """
 Error handling and exception management module
 """
+import os
+import sys
 import streamlit as st
 import logging
 import traceback
@@ -14,14 +16,20 @@ log_dir = Path(__file__).parent.parent / 'logs'
 log_dir.mkdir(exist_ok=True)
 log_file = log_dir / 'app.log'
 
+# Set up logging with UTF-8 encoding for both file and console
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler(log_file, encoding='utf-8'),
-        logging.StreamHandler()
+        logging.StreamHandler(sys.stdout)
     ]
 )
+
+# Ensure console output uses UTF-8
+if sys.stdout.encoding != 'utf-8':
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 logger = logging.getLogger(__name__)
 
@@ -601,42 +609,174 @@ class EnhancedErrorHandler(ErrorHandler):
         error_type = type(error).__name__
         error_message = str(error).lower()
         
-        if "memory" in error_message or "ram" in error_message:
-            suggestions.append("Close unnecessary applications to free up memory")
-            suggestions.append("Reduce the number of concurrent backtest executions")
-        
-        if "disk" in error_message or "space" in error_message:
-            suggestions.append("Free up disk space by cleaning temporary files")
-            suggestions.append("Check if log files are taking up too much space")
-        
-        if "permission" in error_message:
-            suggestions.append("Check file and directory permissions")
-            suggestions.append("Try running the application with appropriate privileges")
-        
+        # Freqtrade related errors
         if "freqtrade" in error_message:
-            suggestions.append("Verify freqtrade installation and configuration")
-            suggestions.append("Check if freqtrade is in the system PATH")
+            suggestions.extend([
+                ".freqtrade可能未正确安装，请运行: pip install freqtrade",
+                "检查freqtrade命令是否在系统PATH中",
+                "确保freqtrade版本与系统兼容"
+            ])
+        
+        # Configuration errors
+        elif "config" in error_message or "configuration" in error_message:
+            suggestions.extend([
+                "检查回测配置参数是否正确设置",
+                "确保时间范围、交易对和初始余额等参数有效",
+                "验证配置文件格式是否正确"
+            ])
+        
+        # Strategy related errors
+        elif "strategy" in error_message:
+            suggestions.extend([
+                "检查策略文件是否存在且格式正确",
+                "确保策略继承自IStrategy类",
+                "验证策略包含必要的方法：populate_indicators, populate_entry_trend, populate_exit_trend"
+            ])
+        
+        # Memory related errors
+        elif "memory" in error_message or "ram" in error_message:
+            suggestions.extend([
+                "关闭不必要的应用程序以释放内存",
+                "减少并发执行的策略数量",
+                "考虑增加系统虚拟内存"
+            ])
+        
+        # Disk space errors
+        elif "disk" in error_message or "space" in error_message:
+            suggestions.extend([
+                "清理磁盘空间，删除不必要的文件",
+                "清空回收站和临时文件",
+                "考虑使用外部存储设备"
+            ])
+        
+        # Permission errors
+        elif "permission" in error_message:
+            suggestions.extend([
+                "检查文件和目录权限设置",
+                "尝试以管理员身份运行应用程序",
+                "确保对相关目录有读写权限"
+            ])
+        
+        # File not found errors
+        elif "not found" in error_message or "filenotfound" in error_message.lower():
+            suggestions.extend([
+                "检查文件路径是否正确",
+                "确认文件是否存在",
+                "验证文件名大小写是否匹配"
+            ])
+        
+        # Import errors
+        elif "import" in error_message:
+            suggestions.extend([
+                "检查依赖包是否已正确安装",
+                "运行 pip install -r requirements.txt 安装所有依赖",
+                "确保Python环境配置正确"
+            ])
         
         # Health-based suggestions
         if health_results['overall_status'] != 'healthy':
             for issue in health_results['issues']:
                 if "memory" in issue.lower():
-                    suggestions.append("System memory usage is high - consider restarting the application")
+                    suggestions.append("系统内存使用率过高，建议重启应用程序")
                 elif "disk" in issue.lower():
-                    suggestions.append("Disk space is low - clean up unnecessary files")
+                    suggestions.append("磁盘空间不足，建议清理存储空间")
                 elif "freqtrade" in issue.lower():
-                    suggestions.append("Freqtrade is not available - check installation")
+                    suggestions.append("Freqtrade不可用，建议检查安装配置")
         
         # Generic suggestions
         if not suggestions:
             suggestions.extend([
-                "Try restarting the application",
-                "Check system resources and close unnecessary programs",
-                "Verify all configuration settings",
-                "Contact technical support if the problem persists"
+                "尝试重启应用程序",
+                "检查系统资源使用情况",
+                "验证所有配置设置",
+                "如问题持续存在，请联系技术支持"
             ])
         
         return suggestions
+
+    def handle_user_friendly_error(self, error: Exception, operation: str = "操作") -> str:
+        """
+        Handle errors with user-friendly messages
+        
+        Args:
+            error: The exception that occurred
+            operation: Description of the operation that failed
+            
+        Returns:
+            User-friendly error message
+        """
+        error_type = type(error).__name__
+        error_message = str(error)
+        
+        # Create user-friendly messages based on error type
+        friendly_messages = {
+            "FileNotFoundError": f"文件未找到，请检查{operation}相关的文件路径是否正确",
+            "PermissionError": f"权限不足，无法执行{operation}，请检查文件权限设置",
+            "ValueError": f"{operation}参数设置有误，请检查输入值是否有效",
+            "TypeError": f"{operation}数据类型不匹配，请检查参数类型",
+            "ImportError": f"依赖包缺失，无法执行{operation}，请安装所需依赖",
+            "TimeoutError": f"{operation}超时，请检查网络连接或系统资源",
+            "ConnectionError": f"{operation}连接失败，请检查网络设置"
+        }
+        
+        # Return friendly message or generic one
+        friendly_message = friendly_messages.get(error_type, f"{operation}失败: {error_message}")
+        
+        # Log the actual error
+        ErrorHandler.log_error(f"{operation} failed: {error_type} - {error_message}", exc_info=True)
+        
+        return friendly_message
+
+    def display_error_in_streamlit(self, error: Exception, operation: str = "操作"):
+        """
+        Display error in Streamlit with user-friendly interface
+        
+        Args:
+            error: The exception that occurred
+            operation: Description of the operation that failed
+        """
+        # Get user-friendly message
+        friendly_message = self.handle_user_friendly_error(error, operation)
+        
+        # Display in Streamlit
+        st.error(f"❌ {friendly_message}")
+        
+        # Show technical details in expander
+        with st.expander("🔍 技术详情", expanded=False):
+            st.write(f"**错误类型:** {type(error).__name__}")
+            st.write(f"**错误信息:** {str(error)}")
+            st.write(f"**发生时间:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            
+            # Show traceback
+            st.write("**堆栈跟踪:**")
+            st.code(traceback.format_exc(), language=None)
+        
+        # Show recovery suggestions
+        health_results = self.health_checker.run_health_checks()
+        suggestions = self._get_recovery_suggestions(error, health_results)
+        
+        if suggestions:
+            st.write("**💡 解决建议:**")
+            for suggestion in suggestions:
+                st.info(suggestion)
+        
+        # Offer to generate error report
+        if st.button("📄 生成错误报告"):
+            try:
+                context = {"operation": operation}
+                report_path = self.report_generator.generate_error_report(error, context)
+                st.success(f"错误报告已生成: {report_path}")
+                
+                # Offer to download
+                with open(report_path, 'r', encoding='utf-8') as f:
+                    st.download_button(
+                        label="📥 下载错误报告",
+                        data=f.read(),
+                        file_name=report_path.name,
+                        mime="application/json"
+                    )
+            except Exception as e:
+                st.error(f"生成错误报告失败: {str(e)}")
     
     def get_system_status(self) -> dict:
         """Get comprehensive system status"""
@@ -687,3 +827,22 @@ def retry_on_failure(max_retries: int = 3, retry_delay: float = 1.0):
 
 # Initialize logging system
 ErrorHandler.setup_logging()
+
+def user_friendly_error_handler(operation_name: str = "操作"):
+    """
+    Decorator for user-friendly error handling in Streamlit applications
+    
+    Args:
+        operation_name: Name of the operation for user messages
+    """
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                # Use enhanced error handler to display user-friendly message
+                enhanced_error_handler.display_error_in_streamlit(e, operation_name)
+                return None
+        return wrapper
+    return decorator

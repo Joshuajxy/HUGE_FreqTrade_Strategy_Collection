@@ -212,7 +212,7 @@ class MonitoringPanel:
                 return ''
             
             styled_df = df.style.applymap(style_status, subset=['Status'])
-            st.dataframe(styled_df, use_container_width=True)
+            st.dataframe(styled_df, width='stretch')
             
             # Action buttons
             col1, col2, col3 = st.columns(3)
@@ -302,7 +302,7 @@ class MonitoringPanel:
                     template="plotly_white"
                 )
                 
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
             else:
                 st.info("No timeline data available")
         
@@ -388,7 +388,7 @@ class MonitoringPanel:
         
         if history_data:
             df = pd.DataFrame(history_data)
-            st.dataframe(df, use_container_width=True)
+            st.dataframe(df, width='stretch')
     
     def _show_dry_run_logs(self, dry_run_executor, run_id: str):
         """Show dry run logs"""
@@ -487,7 +487,7 @@ class MonitoringPanel:
                 showlegend=False
             )
             
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
             
         except ImportError:
             st.warning("psutil not available - install with: pip install psutil")

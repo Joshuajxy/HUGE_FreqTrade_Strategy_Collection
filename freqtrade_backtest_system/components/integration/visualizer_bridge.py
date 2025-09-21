@@ -420,7 +420,7 @@ class VisualizerIntegrationPanel:
                 'size_kb': '大小(KB)',
                 'created': '创建时间'
             },
-            use_container_width=True
+            width='stretch'
         )
         
         # File operations

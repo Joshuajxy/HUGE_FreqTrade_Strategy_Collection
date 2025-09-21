@@ -34,6 +34,19 @@ class ResultComparator:
             'avg_profit',
             'avg_profit_pct'
         ]
+        
+        # Define sorting options
+        self.sort_options = {
+            'Total Return (%)': 'total_return_pct',
+            'Win Rate (%)': 'win_rate',
+            'Sharpe Ratio': 'sharpe_ratio',
+            'Max Drawdown (%)': 'max_drawdown_pct',
+            'Total Trades': 'total_trades',
+            'Average Profit': 'avg_profit',
+            'Sortino Ratio': 'sortino_ratio',
+            'Calmar Ratio': 'calmar_ratio',
+            'Profit Factor': 'profit_factor'
+        }
     
     @error_handler(DataError, show_error=True)
     def compare_strategies(self, results: List[BacktestResult]) -> ComparisonResult:
@@ -336,7 +349,145 @@ class ResultComparator:
             
             ErrorHandler.log_info(f"Comparison report exported to: {file_path}")
             return True
-        
         except Exception as e:
             ErrorHandler.log_error(f"Failed to export comparison report: {str(e)}")
             return False
+
+    def sort_results(self, results: List[BacktestResult], sort_by: str = 'total_return_pct', 
+                     ascending: bool = False) -> List[BacktestResult]:
+        """
+        Sort backtest results by specified metric
+        
+        Args:
+            results: list of backtest results
+            sort_by: metric to sort by
+            ascending: whether to sort in ascending order
+            
+        Returns:
+            sorted list of backtest results
+        """
+        if not results:
+            return results
+            
+        try:
+            # Validate sort_by parameter
+            if sort_by not in self.sort_options.values():
+                # Try to find the metric in available metrics
+                available_metrics = []
+                for result in results:
+                    available_metrics.extend([attr for attr in dir(result.metrics) 
+                                            if not attr.startswith('_')])
+                if sort_by not in available_metrics:
+                    sort_by = 'total_return_pct'  # Default fallback
+            
+            # Sort results
+            sorted_results = sorted(
+                results, 
+                key=lambda x: getattr(x.metrics, sort_by, 0),
+                reverse=not ascending
+            )
+            
+            return sorted_results
+            
+        except Exception as e:
+            ErrorHandler.log_error(f"Failed to sort results by {sort_by}: {str(e)}")
+            return results
+
+    def filter_results(self, results: List[BacktestResult], 
+                      min_return: Optional[float] = None,
+                      max_drawdown: Optional[float] = None,
+                      min_win_rate: Optional[float] = None,
+                      min_sharpe: Optional[float] = None) -> List[BacktestResult]:
+        """
+        Filter backtest results based on criteria
+        
+        Args:
+            results: list of backtest results
+            min_return: minimum return percentage
+            max_drawdown: maximum drawdown percentage (absolute value)
+            min_win_rate: minimum win rate percentage
+            min_sharpe: minimum Sharpe ratio
+            
+        Returns:
+            filtered list of backtest results
+        """
+        if not results:
+            return results
+            
+        filtered_results = []
+        
+        for result in results:
+            metrics = result.metrics
+            
+            # Apply filters
+            if min_return is not None and metrics.total_return_pct < min_return:
+                continue
+            if max_drawdown is not None and abs(metrics.max_drawdown_pct) > max_drawdown:
+                continue
+            if min_win_rate is not None and metrics.win_rate < min_win_rate:
+                continue
+            if min_sharpe is not None and metrics.sharpe_ratio < min_sharpe:
+                continue
+                
+            filtered_results.append(result)
+            
+        return filtered_results
+
+    def get_top_strategies(self, results: List[BacktestResult], top_n: int = 5,
+                          sort_by: str = 'sharpe_ratio') -> List[BacktestResult]:
+        """
+        Get top N strategies based on specified metric
+        
+        Args:
+            results: list of backtest results
+            top_n: number of top strategies to return
+            sort_by: metric to sort by
+            
+        Returns:
+            top N strategies
+        """
+        if not results:
+            return []
+            
+        # Sort results
+        sorted_results = self.sort_results(results, sort_by, ascending=False)
+        
+        # Return top N
+        return sorted_results[:min(top_n, len(sorted_results))]
+
+    def create_enhanced_performance_matrix(self, results: List[BacktestResult]) -> pd.DataFrame:
+        """
+        Create enhanced performance comparison matrix with more metrics
+        
+        Args:
+            results: backtest results list
+            
+        Returns:
+            enhanced performance matrix dataframe
+        """
+        try:
+            data = []
+            
+            for result in results:
+                metrics = result.metrics
+                row = {
+                    'Strategy': result.strategy_name,
+                    'Total Return (%)': f"{metrics.total_return_pct:.2f}%",
+                    'Win Rate (%)': f"{metrics.win_rate:.2f}%",
+                    'Max Drawdown (%)': f"{metrics.max_drawdown_pct:.2f}%",
+                    'Sharpe Ratio': f"{metrics.sharpe_ratio:.3f}",
+                    'Sortino Ratio': f"{metrics.sortino_ratio:.3f}",
+                    'Calmar Ratio': f"{metrics.calmar_ratio:.3f}",
+                    'Profit Factor': f"{metrics.profit_factor:.3f}",
+                    'Total Trades': metrics.total_trades,
+                    'Avg Profit': f"{metrics.avg_profit:.4f}",
+                    'Avg Profit (%)': f"{metrics.avg_profit_pct:.4f}%",
+                    'Execution Time': f"{result.execution_time:.2f}s" if result.execution_time else "N/A"
+                }
+                data.append(row)
+            
+            df = pd.DataFrame(data)
+            return df
+        except Exception as e:
+            ErrorHandler.log_error(f"Failed to create enhanced performance matrix: {str(e)}")
+            return pd.DataFrame()

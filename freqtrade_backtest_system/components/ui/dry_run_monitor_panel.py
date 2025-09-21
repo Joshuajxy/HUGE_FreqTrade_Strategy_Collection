@@ -31,7 +31,7 @@ class DryRunMonitorPanel:
                     df_balance['timestamp'] = pd.to_datetime(df_balance['timestamp'])
                     fig = go.Figure(data=go.Scatter(x=df_balance['timestamp'], y=df_balance['balance'], mode='lines'))
                     fig.update_layout(title='Real-time Equity Curve', xaxis_title='Time', yaxis_title='Balance')
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig, width='stretch')
                 else:
                     st.info("No equity curve data available.")
 

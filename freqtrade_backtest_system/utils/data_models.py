@@ -65,6 +65,7 @@ class BacktestConfig:
     enable_position_stacking: bool = False
     stake_amount: str = "unlimited"
     dry_run_wallet: float = 1000.0
+    exit_pricing: str = "ask"
     
     def __post_init__(self):
         """Validate configuration parameters"""
@@ -113,7 +114,31 @@ class BacktestConfig:
                 "ccxt_async_config": {}
             },
             "fee": self.fee,
-            "enable_position_stacking": self.enable_position_stacking
+            "enable_position_stacking": self.enable_position_stacking,
+            "exit_pricing": {
+                "price_side": self.exit_pricing,
+                "price_last_balance": 0.0,
+                "use_order_book": True,
+                "order_book_top": 1,
+                "order_book_min": 1,
+                "order_book_max": 1
+            },
+            "ask_strategy": {
+                "price_side": "ask",
+                "use_order_book": True,
+                "order_book_top": 1,
+                "order_book_min": 1,
+                "order_book_max": 1,
+                "price_last_balance": 0.0
+            },
+            "bid_strategy": {
+                "price_side": "bid",
+                "use_order_book": True,
+                "order_book_top": 1,
+                "order_book_min": 1,
+                "order_book_max": 1,
+                "price_last_balance": 0.0
+            }
         }
 
 @dataclass
