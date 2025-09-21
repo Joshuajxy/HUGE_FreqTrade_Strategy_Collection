@@ -114,11 +114,12 @@ class BacktestExecutor:
             raise ExecutionError(error_msg) from e
 
     @error_handler(ExecutionError, show_error=False)
-    def execute_backtest(self, strategy_info: "StrategyInfo", config: BacktestConfig) -> BacktestResult:
+    def execute_backtest(self, task_id: str, strategy_info: "StrategyInfo", config: BacktestConfig) -> BacktestResult:
         """
         Execute backtest with detailed logging, ensuring data is downloaded first.
         
         Args:
+            task_id: The unique ID for this execution task.
             strategy_info: strategy information object
             config: backtest configuration
             
@@ -134,8 +135,9 @@ class BacktestExecutor:
             self._ensure_data_downloaded(config)
 
             # Step 2: Proceed with backtest execution
-            print(f"\n🏁 STARTING BACKTEST EXECUTION: {strategy_name}")
-            ErrorHandler.log_info(f"Starting backtest execution: {strategy_name}")
+            log_line = f"🏁 STARTING BACKTEST EXECUTION: {strategy_name}"
+            print(f"\n{log_line}")
+            ErrorHandler.log_info(log_line)
 
             # Log configuration details
             config_info = f"Backtest config - Timeframe: {config.timeframe}, Pairs: {len(config.pairs)}, Start: {config.start_date}, End: {config.end_date}"
@@ -146,7 +148,7 @@ class BacktestExecutor:
             config_file = self._create_temp_config(strategy_name, config)
             
             # Execute freqtrade backtest
-            output = self._run_freqtrade_backtest_with_logging(strategy_info, config_file)
+            output = self._run_freqtrade_backtest_with_logging(task_id, strategy_info, config_file)
             
             # Parse results
             parser = ResultParser()
@@ -222,11 +224,14 @@ class BacktestExecutor:
         except Exception as e:
             raise ExecutionError(f"Failed to create temporary configuration: {str(e)}")
     
-    def _run_freqtrade_backtest_with_logging(self, strategy_info: "StrategyInfo", config_file: Path) -> str:
+    def _run_freqtrade_backtest_with_logging(self, task_id: str, strategy_info: "StrategyInfo", config_file: Path) -> str:
         """Run freqtrade backtest command with detailed logging"""
         from utils.data_models import StrategyInfo # For type hint
+        from .scheduler_singleton import get_log_queue
+
         strategy_name = strategy_info.name
         strategy_path = strategy_info.file_path.parent
+        log_queue = get_log_queue()
 
         try:
             # Build command
@@ -242,13 +247,13 @@ class BacktestExecutor:
 
             # Print detailed command information for real execution
             if self.freqtrade_path != "mock_freqtrade":
-                print(f"\n🔥 REAL FREQTRADE EXECUTION:")
-                print(f"📝 Command: {' '.join(cmd)}")
-                print(f"🎯 Strategy: {strategy_name}")
-                print(f"📂 Strategy Path: {strategy_path}")
-                print(f"⚙️ Config: {config_file}")
-                print(f"🔧 Freqtrade path: {sys.executable} -m freqtrade")
-                print("=" * 80)
+                log_queue.put((task_id, f"🔥 REAL FREQTRADE EXECUTION:"))
+                log_queue.put((task_id, f"📝 Command: {' '.join(cmd)}"))
+                log_queue.put((task_id, f"🎯 Strategy: {strategy_name}"))
+                log_queue.put((task_id, f"📂 Strategy Path: {strategy_path}"))
+                log_queue.put((task_id, f"⚙️ Config: {config_file}"))
+                log_queue.put((task_id, f"🔧 Freqtrade path: {sys.executable} -m freqtrade"))
+                log_queue.put((task_id, "=" * 80))
 
             # Execute command with real-time logging
             process = subprocess.Popen(
@@ -271,7 +276,6 @@ class BacktestExecutor:
             # Set up polling for both stdout and stderr
             if hasattr(select, 'select') and sys.platform != 'win32':  # Unix-like systems only
                 while True:
-                    # Wait for data on either stdout or stderr
                     reads = [process.stdout, process.stderr]
                     readable, _, _ = select.select(reads, [], [], 0.1)
 
@@ -280,122 +284,52 @@ class BacktestExecutor:
                             line = process.stdout.readline()
                             if line:
                                 line = line.strip()
-                                if line:  # Only print non-empty lines
-                                    print(f"📄 FREQTRADE STDOUT: {line}")
+                                if line:
+                                    log_queue.put((task_id, f"📄 STDOUT: {line}"))
                                 stdout_lines.append(line)
                         elif stream == process.stderr:
                             line = process.stderr.readline()
                             if line:
                                 line = line.strip()
-                                if line:  # Only print non-empty lines
-                                    print(f"⚠️  FREQTRADE STDERR: {line}")
+                                if line:
+                                    log_queue.put((task_id, f"⚠️ STDERR: {line}"))
                                 stderr_lines.append(line)
 
-                    # Check if process has finished
                     if process.poll() is not None:
-                        # Read any remaining output
-                        remaining_stdout, remaining_stderr = process.communicate()
-                        if remaining_stdout:
-                            for line in remaining_stdout.split('\n'):
-                                if line.strip():
-                                    print(f"📄 FREQTRADE STDOUT: {line.strip()}")
-                                    stdout_lines.append(line.strip())
-                        if remaining_stderr:
-                            for line in remaining_stderr.split('\n'):
-                                if line.strip():
-                                    print(f"⚠️  FREQTRADE STDERR: {line.strip()}")
-                                    stderr_lines.append(line.strip())
-                        break
+                        break # Exit loop when process finishes
             else:
-                # Windows fallback - simpler approach
-                print("🔄 Reading freqtrade output (Windows mode)...")
+                # Windows fallback
+                log_queue.put((task_id, "🔄 Reading freqtrade output (Windows mode)..."))
                 import threading
-                import queue
 
-                # Use queues to handle output
-                stdout_queue = queue.Queue()
-                stderr_queue = queue.Queue()
-
-                def read_stdout():
+                def reader_thread(pipe, line_list, prefix):
                     try:
-                        for line in iter(process.stdout.readline, ''):
+                        for line in iter(pipe.readline, ''):
                             line = line.strip()
                             if line:
-                                stdout_queue.put(line)
-                    except:
-                        pass
+                                log_queue.put((task_id, f"{prefix}: {line}"))
+                                line_list.append(line)
+                    finally:
+                        pipe.close()
 
-                def read_stderr():
-                    try:
-                        for line in iter(process.stderr.readline, ''):
-                            line = line.strip()
-                            if line:
-                                stderr_queue.put(line)
-                    except:
-                        pass
-
-                # Start reader threads
-                stdout_thread = threading.Thread(target=read_stdout, daemon=True)
-                stderr_thread = threading.Thread(target=read_stderr, daemon=True)
+                stdout_thread = threading.Thread(target=reader_thread, args=[process.stdout, stdout_lines, "📄 STDOUT"], daemon=True)
+                stderr_thread = threading.Thread(target=reader_thread, args=[process.stderr, stderr_lines, "⚠️ STDERR"], daemon=True)
                 stdout_thread.start()
                 stderr_thread.start()
+                stdout_thread.join()
+                stderr_thread.join()
 
-                # Read from queues and display
-                while True:
-                    # Read available lines from queues
-                    while not stdout_queue.empty():
-                        line = stdout_queue.get_nowait()
-                        print(f"📄 FREQTRADE STDOUT: {line}")
-                        stdout_lines.append(line)
-
-                    while not stderr_queue.empty():
-                        line = stderr_queue.get_nowait()
-                        print(f"⚠️  FREQTRADE STDERR: {line}")
-                        stderr_lines.append(line)
-
-                    # Check if process has finished
-                    if process.poll() is not None:
-                        # Wait a bit for remaining output
-                        time.sleep(0.1)
-
-                        # Read any remaining output
-                        remaining_stdout, remaining_stderr = process.communicate()
-                        if remaining_stdout:
-                            for line in remaining_stdout.split('\n'):
-                                if line.strip():
-                                    print(f"📄 FREQTRADE STDOUT: {line.strip()}")
-                                    stdout_lines.append(line.strip())
-                        if remaining_stderr:
-                            for line in remaining_stderr.split('\n'):
-                                if line.strip():
-                                    print(f"⚠️  FREQTRADE STDERR: {line.strip()}")
-                                    stderr_lines.append(line.strip())
-
-                        # Read any remaining queue items
-                        while not stdout_queue.empty():
-                            line = stdout_queue.get_nowait()
-                            print(f"📄 FREQTRADE STDOUT: {line}")
-                            stdout_lines.append(line)
-
-                        while not stderr_queue.empty():
-                            line = stderr_queue.get_nowait()
-                            print(f"⚠️  FREQTRADE STDERR: {line}")
-                            stderr_lines.append(line)
-
-                        break
-
-                    # Small delay to prevent busy waiting
-                    time.sleep(0.05)
+            process.wait()
 
             # Check return code
             if process.returncode == 0:
                 ErrorHandler.log_info(f"Freqtrade backtest execution successful: {strategy_name}")
-                print(f"✅ FREQTRADE EXECUTION COMPLETED SUCCESSFULLY")
+                log_queue.put((task_id, "✅ FREQTRADE EXECUTION COMPLETED SUCCESSFULLY"))
                 return '\n'.join(stdout_lines)
             else:
-                error_msg = f"Freqtrade backtest failed: {strategy_name} - {''.join(stderr_lines)}"
+                error_msg = f"Freqtrade backtest failed: {strategy_name} - {' '.join(stderr_lines)}"
                 ErrorHandler.log_error(error_msg)
-                print(f"❌ FREQTRADE EXECUTION FAILED (Return code: {process.returncode})")
+                log_queue.put((task_id, f"❌ FREQTRADE EXECUTION FAILED (Return code: {process.returncode})"))
                 raise ExecutionError(error_msg)
 
         except subprocess.TimeoutExpired:

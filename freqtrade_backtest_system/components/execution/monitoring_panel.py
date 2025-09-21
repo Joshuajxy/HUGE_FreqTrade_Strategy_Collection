@@ -181,6 +181,23 @@ class ExecutionMonitoringPanel:
                     if stopped > 0:
                         st.warning(f"⏹️ {stopped} stopped")
     
+    def _update_logs_from_queue(self, task_id_to_strategy_map: Dict[str, str]):
+        """Drain the log queue and update the session state for logs."""
+        from .scheduler_singleton import get_log_queue
+        import queue
+
+        log_queue = get_log_queue()
+        while not log_queue.empty():
+            try:
+                task_id, log_line = log_queue.get_nowait()
+                strategy_name = task_id_to_strategy_map.get(task_id)
+                if strategy_name:
+                    if strategy_name not in st.session_state.task_logs:
+                        st.session_state.task_logs[strategy_name] = []
+                    st.session_state.task_logs[strategy_name].append(log_line)
+            except queue.Empty:
+                break
+
     def _render_task_status_table_with_logs(self, 
                                            task_ids: Dict[str, str], 
                                            status_dict: Dict[str, ExecutionStatus],
@@ -188,31 +205,32 @@ class ExecutionMonitoringPanel:
         """Render task status table with real-time logs"""
         st.subheader("📋 Task Status and Logs")
         
+        # Create a reverse map from task_id to strategy name for the log updater
+        task_id_to_strategy_map = {v: k for k, v in task_ids.items()}
+        self._update_logs_from_queue(task_id_to_strategy_map)
+
         # Create status data
         status_data = []
         
         for strategy, task_id in task_ids.items():
             status = status_dict.get(task_id, ExecutionStatus.IDLE)
-            # Use hasattr to check if scheduler has get_task_metadata method
             metadata = None
-            if hasattr(scheduler, 'get_task_metadata'):
-                metadata = scheduler.get_task_metadata(task_id)
+            if hasattr(scheduler, 'get_task_info'):
+                task_info = scheduler.get_task_info(task_id)
+                if task_info:
+                    metadata = {
+                        'start_time': task_info.started_at,
+                        'end_time': task_info.completed_at
+                    }
             
             # Calculate duration
             duration = "N/A"
-            start_time = None
-            if metadata and 'start_time' in metadata:
+            if metadata and metadata.get('start_time'):
                 start_time = metadata['start_time']
-                if isinstance(start_time, datetime):
-                    if status == ExecutionStatus.RUNNING:
-                        duration = str(datetime.now() - start_time).split('.')[0]
-                    else:
-                        # For completed tasks, we'd need end time
-                        duration = "Completed"
-            
-            # Store start time for log tracking
-            if start_time and strategy not in st.session_state.task_start_times:
-                st.session_state.task_start_times[strategy] = start_time
+                if status.value == 'running':
+                    duration = str(datetime.now() - start_time).split('.')[0]
+                elif metadata.get('end_time'):
+                    duration = str(metadata['end_time'] - start_time).split('.')[0]
             
             status_data.append({
                 'Strategy': strategy,
@@ -225,15 +243,15 @@ class ExecutionMonitoringPanel:
         if status_data:
             df = pd.DataFrame(status_data)
             
-            # Style the dataframe
             def style_status(val):
-                if val.lower() == 'running':
+                val_lower = val.lower()
+                if val_lower == 'running':
                     return 'background-color: #fff3cd; color: #856404'
-                elif val.lower() == 'completed':
+                elif val_lower == 'completed':
                     return 'background-color: #d4edda; color: #155724'
-                elif val.lower() == 'failed':
+                elif val_lower == 'failed':
                     return 'background-color: #f8d7da; color: #721c24'
-                elif val.lower() == 'stopped':
+                elif val_lower == 'stopped' or val_lower == 'cancelled':
                     return 'background-color: #e2e3e5; color: #383d41'
                 return ''
             
@@ -243,7 +261,6 @@ class ExecutionMonitoringPanel:
             # Display logs for running tasks
             st.subheader("📝 Real-time Task Logs")
             
-            # Tabs for each strategy's logs
             if task_ids:
                 tab_names = list(task_ids.keys())
                 tabs = st.tabs(tab_names)
@@ -251,57 +268,23 @@ class ExecutionMonitoringPanel:
                 for i, (strategy, task_id) in enumerate(task_ids.items()):
                     with tabs[i]:
                         self._render_strategy_logs(strategy, task_id, status_dict.get(task_id, ExecutionStatus.IDLE))
-            
-            
     
     def _render_strategy_logs(self, strategy: str, task_id: str, status: ExecutionStatus):
-        """Render logs for a specific strategy"""
-        try:
-            # Initialize logs for this strategy if not exists
-            if strategy not in st.session_state.task_logs:
-                st.session_state.task_logs[strategy] = []
-            
-            # Simulate log generation for demo purposes
-            # In a real implementation, this would read actual logs from the task
-            if status == ExecutionStatus.RUNNING:
-                # Generate simulated logs
-                current_time = datetime.now()
-                start_time = st.session_state.task_start_times.get(strategy, current_time)
-                elapsed = (current_time - start_time).total_seconds()
-                
-                # Generate log entries based on elapsed time
-                log_entries = []
-                intervals = int(elapsed / 10)  # New log every 10 seconds
-                
-                for i in range(len(st.session_state.task_logs[strategy]), intervals):
-                    log_time = start_time + (current_time - start_time) * (i / max(intervals, 1))
-                    messages = [
-                        f"[{log_time.strftime('%H:%M:%S')}] Initializing strategy...",
-                        f"[{log_time.strftime('%H:%M:%S')}] Loading market data...",
-                        f"[{log_time.strftime('%H:%M:%S')}] Running backtest...",
-                        f"[{log_time.strftime('%H:%M:%S')}] Processing trades...",
-                        f"[{log_time.strftime('%H:%M:%S')}] Calculating metrics..."
-                    ]
-                    log_entries.append(messages[min(i, len(messages)-1)])
-                
-                # Update logs
-                st.session_state.task_logs[strategy].extend(log_entries)
-            
-            # Display logs
-            if st.session_state.task_logs[strategy]:
-                log_text = "\n".join(st.session_state.task_logs[strategy][-50:])  # Last 50 lines
-                st.text_area(
-                    "Recent Logs",
-                    value=log_text,
-                    height=300,
-                    disabled=True,
-                    key=f"log_area_{strategy}"
-                )
-            else:
-                st.info("No logs available yet. Waiting for task to start...")
-                
-        except Exception as e:
-            st.error(f"Error displaying logs: {str(e)}")
+        """Render logs for a specific strategy from session state."""
+        if strategy not in st.session_state.task_logs:
+            st.session_state.task_logs[strategy] = []
+
+        if st.session_state.task_logs[strategy]:
+            log_text = "\n".join(st.session_state.task_logs[strategy][-200:])  # Last 200 lines
+            st.text_area(
+                "Recent Logs",
+                value=log_text,
+                height=300,
+                disabled=True,
+                key=f"log_area_{strategy}"
+            )
+        else:
+            st.info("No logs available yet. Waiting for task to start...")
     
     def _render_execution_timeline(self, task_ids: Dict[str, str], scheduler):
         """Render execution timeline chart"""

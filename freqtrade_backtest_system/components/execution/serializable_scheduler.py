@@ -63,7 +63,7 @@ class SerializableScheduler:
         
         # Get the actual thread pool and submit the task runner function
         thread_pool = get_thread_pool_executor()
-        future = thread_pool.submit(run_backtest_task, strategy_info, config)
+        future = thread_pool.submit(run_backtest_task, task_id, strategy_info, config)
         
         # Add a callback that will update the task's status upon completion
         future.add_done_callback(self._task_done_callback(task_id))
@@ -84,9 +84,20 @@ class SerializableScheduler:
 
     def _task_done_callback(self, task_id: str):
         def callback(future):
+            import streamlit as st
             try:
                 result = future.result()
                 self.update_task_status(task_id, TaskStatus.COMPLETED, result=result)
+                
+                # Add the successful result to the main results list for the analysis page
+                if 'backtest_results' not in st.session_state:
+                    st.session_state.backtest_results = []
+                
+                # Avoid duplicates by checking strategy name
+                existing_names = {res.strategy_name for res in st.session_state.backtest_results}
+                if result and hasattr(result, 'strategy_name') and result.strategy_name not in existing_names:
+                    st.session_state.backtest_results.append(result)
+
             except Exception as e:
                 self.update_task_status(task_id, TaskStatus.FAILED, error_message=str(e))
         return callback
