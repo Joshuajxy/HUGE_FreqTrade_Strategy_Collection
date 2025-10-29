@@ -101,7 +101,9 @@ class SerializableScheduler:
         from utils.data_models import StrategyInfo # For type hint
         task_ids = {}
         
-        for strategy_info in strategies:
+        for index, strategy_info in enumerate(strategies):
+            if index > 0:
+                time.sleep(5)
             task_id = self.submit_task(strategy_info, config)
             task_ids[strategy_info.name] = task_id
         

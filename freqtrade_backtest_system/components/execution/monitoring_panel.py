@@ -129,6 +129,16 @@ class ExecutionMonitoringPanel:
                     if task_info.result.strategy_name not in existing_names:
                         st.session_state.backtest_results.append(task_info.result)
                         ErrorHandler.log_info(f"Added result for {task_info.result.strategy_name} to session state")
+
+                        run_id = getattr(getattr(task_info.result, "config", None), "run_id", None)
+                        if run_id:
+                            st.session_state.latest_run_id = run_id
+                            st.session_state.results_need_refresh = True
+                            ErrorHandler.log_info(
+                                f"New run completed, flagging results refresh for run_id={run_id}"
+                            )
+                        # Force a rerun to update the UI
+                        # st.rerun()
         except Exception as e:
             ErrorHandler.log_error(f"Error updating session state with results: {str(e)}")
     

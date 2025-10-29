@@ -159,7 +159,9 @@ class StrategyScanner:
                 file_path=file_path,
                 description=description or f"Strategy class: {strategy_name}",
                 author=author,
-                version=version
+                version=version,
+                class_name=strategy_name,  # Set class_name to strategy_name
+                parameters=[]  # Initialize with empty parameters list
             )
         
         except SyntaxError as e:

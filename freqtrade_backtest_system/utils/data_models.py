@@ -31,11 +31,16 @@ class StrategyInfo:
     author: Optional[str] = None
     version: Optional[str] = None
     last_modified: Optional[datetime] = None
+    class_name: Optional[str] = None  # Add class_name attribute
+    parameters: Optional[List[Dict[str, Any]]] = None  # Add parameters attribute
     
     def __post_init__(self):
         """Post processing, ensure file_path is Path object"""
         if isinstance(self.file_path, str):
             self.file_path = Path(self.file_path)
+        # Initialize parameters as empty list if None
+        if self.parameters is None:
+            self.parameters = []
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
@@ -66,6 +71,7 @@ class BacktestConfig:
     stake_amount: str = "unlimited"
     dry_run_wallet: float = 1000.0
     exit_pricing: str = "ask"
+    run_id: Optional[str] = None
     
     def __post_init__(self):
         """Validate configuration parameters"""
@@ -100,6 +106,7 @@ class BacktestConfig:
         """Convert to freqtrade configuration format"""
         return {
             "strategy": strategy_name,
+            "run_id": self.run_id,
             "timeframe": self.timeframe,
             "timerange": f"{self.start_date.strftime('%Y%m%d')}-{self.end_date.strftime('%Y%m%d')}",
             "stake_currency": "USDT",
@@ -191,6 +198,10 @@ class PerformanceMetrics:
         
         if self.max_drawdown != 0:
             self.calmar_ratio = self.total_return / abs(self.max_drawdown)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary"""
+        return asdict(self)
 
 @dataclass
 class BacktestResult:
@@ -203,6 +214,7 @@ class BacktestResult:
     execution_time: Optional[float] = None
     error_message: Optional[str] = None
     status: ExecutionStatus = ExecutionStatus.COMPLETED
+    source_file: Optional[str] = None
     
     def __post_init__(self):
         """Post processing"""
@@ -223,7 +235,8 @@ class BacktestResult:
             'timestamp': self.timestamp.isoformat(),
             'execution_time': self.execution_time,
             'error_message': self.error_message,
-            'status': self.status.value
+            'status': self.status.value,
+            'source_file': self.source_file
         }
     
     @classmethod
@@ -237,7 +250,8 @@ class BacktestResult:
             timestamp=datetime.fromisoformat(data['timestamp']),
             execution_time=data.get('execution_time'),
             error_message=data.get('error_message'),
-            status=ExecutionStatus(data['status'])
+            status=ExecutionStatus(data['status']),
+            source_file=data.get('source_file')
         )
     
     def save_to_file(self, file_path: Path):

@@ -175,11 +175,15 @@ class PerformanceMonitoringPanel:
                     st.warning(f"⚠️ {rec}")
         
         # Real-time performance chart
+        fig = None
         if st.session_state.performance_monitoring and self.profiler.metrics_history:
             st.subheader("📈 实时性能图表")
             
             # Get recent metrics (last 50 data points)
             recent_metrics = self.profiler.metrics_history[-50:]
+            
+            # Initialize fig variable
+            fig = go.Figure()
             
             if recent_metrics:
                 # Create performance chart
@@ -222,8 +226,25 @@ class PerformanceMonitoringPanel:
                     showlegend=False,
                     title="系统性能实时监控"
                 )
-                
-        st.plotly_chart(fig, width='stretch')
+            else:
+                # Create empty chart with message
+                fig.add_annotation(
+                    text="暂无性能数据",
+                    xref="paper",
+                    yref="paper",
+                    x=0.5,
+                    y=0.5,
+                    showarrow=False,
+                    font=dict(size=20)
+                )
+                fig.update_layout(
+                    height=400,
+                    title="系统性能实时监控"
+                )
+        if fig is not None:
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("开启监控后将显示实时性能图表。")
     
     def _render_performance_optimization(self):
         """Render performance optimization tab"""

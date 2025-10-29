@@ -77,6 +77,20 @@ class ResultParser:
             ErrorHandler.log_error(f"Failed to parse backtest result: {str(e)}")
             raise DataError(f"Failed to parse backtest result: {str(e)}")
     
+    def parse_backtest_file(self, file_path: Path | str, strategy_name: str, config: BacktestConfig) -> BacktestResult:
+        """Parse backtest result from a file."""
+        try:
+            path = Path(file_path)
+            if not path.exists():
+                raise DataError(f"Backtest output file not found: {path}")
+
+            content = path.read_text(encoding='utf-8')
+            ErrorHandler.log_info(f"Parsing backtest output from file: {path}")
+            return self.parse_backtest_output(content, strategy_name, config)
+        except Exception as exc:
+            ErrorHandler.log_error(f"Failed to parse backtest file {file_path}: {exc}")
+            raise
+    
     def _parse_metrics(self, output: str) -> PerformanceMetrics:
         """Parse performance metrics"""
         metrics = PerformanceMetrics()
